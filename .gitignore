@@ -1,3 +1,5 @@
 # Environment variables
 .env
 
+# Private Key Decoded from Base64 to Hex
+decodeKey.js
