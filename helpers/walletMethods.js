@@ -1,12 +1,14 @@
-// walletFunctions.js
 import { Transaction } from '@mysten/sui/transactions';
-import { client, keypair } from 'suiClient.js';
+import { SuiClient } from '@mysten/sui/client';
+import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
+import { client } from '../suiClient.js';
 
 const PACKAGE_ID = process.env.PACKAGE_ID;
 const MODULE_NAME = process.env.MODULE_NAME;
 
+
 // Helper function to execute transactions
-async function executeTransaction(txb) {
+async function executeTransaction(txb, keypair) {
     try {
         const result = await client.signAndExecuteTransaction({
             transaction: txb,
@@ -20,97 +22,33 @@ async function executeTransaction(txb) {
 }
 
 
-// 1. Create Wallet
-export async function createWallet() {
-    const txb = new Transaction();
+// Create Wallet with a new keypair for each user
+export function createWallet() {
+    // Generate a new Ed25519 keypair
+    const keypair = Ed25519Keypair.generate();
 
-    txb.moveCall({
-        target: `${PACKAGE_ID}::${MODULE_NAME}::create_wallet`,
-        arguments: [],
-    });
+    // Derive the Sui wallet address from the public key
+    const walletAddress = keypair.getPublicKey().toSuiAddress();
 
-    return await executeTransaction(txb);
+    // Get the private key as a base64-encoded string
+    const privateKey = keypair.getSecretKey();
+
+    return {
+        walletAddress,
+        privateKey,
+    };
 }
 
-// 2. Deposit
-export async function deposit(walletId, coinObjectId) {
-    const txb = new Transaction();
 
-    txb.moveCall({
-        target: `${PACKAGE_ID}::${MODULE_NAME}::deposit`,
-        arguments: [
-            txb.object(walletId),
-            txb.object(coinObjectId),
-        ],
-    });
 
-    return await executeTransaction(txb);
-}
 
-// 3. Transfer to Wallet
-export async function transferToWallet(sourceWalletId, destWalletId, amount) {
-    const txb = new Transaction();
 
-    txb.moveCall({
-        target: `${PACKAGE_ID}::${MODULE_NAME}::transfer_to_wallet`,
-        arguments: [
-            txb.object(sourceWalletId),
-            txb.object(destWalletId),
-            txb.pure.u64(amount),
-        ],
-    });
 
-    return await executeTransaction(txb);
-}
-
-// 4. Transfer to Address
-export async function transferToAddress(sourceWalletId, recipientAddress, amount) {
-    const txb = new Transaction();
-
-    txb.moveCall({
-        target: `${PACKAGE_ID}::${MODULE_NAME}::transfer_to_address`,
-        arguments: [
-            txb.object(sourceWalletId),
-            txb.pure.address(recipientAddress),
-            txb.pure.u64(amount),
-        ],
-    });
-
-    return await executeTransaction(txb);
-}
-
-// 5. Receive
-export async function receive(walletId, coinObjectId) {
-    const txb = new Transaction();
-
-    txb.moveCall({
-        target: `${PACKAGE_ID}::${MODULE_NAME}::receive`,
-        arguments: [
-            txb.object(walletId),
-            txb.object(coinObjectId),
-        ],
-    });
-
-    return await executeTransaction(txb);
-}
-
-// Example usage:
-/*
-async function main() {
-    try {
-        // Create a new wallet
-        const createResult = await createWallet();
-        console.log('Wallet created:', createResult);
-
-        // Example deposit (you'd need a valid coin object ID)
-        // const depositResult = await deposit(walletId, coinId);
-
-        // Example transfer to wallet
-        // const transferResult = await transferToWallet(sourceWalletId, destWalletId, 1000000);
-    } catch (error) {
-        console.error('Error:', error);
-    }
-}
-
-main();
-*/
+// // Export other wallet functions as needed
+// export async function deposit(walletAddress, amount) {
+//     // Implementation for depositing SUI
+// }
+//
+// export async function transferToAddress(fromAddress, toAddress, amount) {
+//     // Implementation for transferring SUI
+// }
