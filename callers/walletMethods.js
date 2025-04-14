@@ -1,7 +1,6 @@
 import { Transaction } from '@mysten/sui/transactions';
 import { TransactionBlock } from '@mysten/sui.js/transactions';
 import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
-// import { SuiClient, getFullnodeUrl } from '@mysten/sui/client';
 import { client } from '../suiClient.js';
 
 const PACKAGE_ID = process.env.PACKAGE_ID;
@@ -9,20 +8,15 @@ const MODULE_NAME = process.env.MODULE_NAME;
 
 // Placeholder for your testnet funded wallet's private key (base64-encoded)
 // Replace this with your actual testnet wallet's private key for testing
-const SENDER_PRIVATE_KEY = process.env.PRIVATE_KEY; // Load from .env for security
+const SENDER_PRIVATE_KEY = process.env.PRIVATE_KEY;
 
-// Transfer SUI tokens to a wallet using the transfer_to_wallet function
-// Helper: Derive Ed25519 keypair from a base64-encoded private key
 // Derive keypair from hex private key
 function getKeypairFromPrivateKey(hexKey) {
     if (!hexKey) {
         throw new Error('Private key is required');
     }
-
-    // Remove '0x' prefix if present
     let privateKey = hexKey.startsWith('0x') ? hexKey.slice(2) : hexKey;
 
-    // Validate hex length (64 hex chars = 32 bytes)
     if (privateKey.length !== 64) {
         throw new Error(`Invalid private key length: ${privateKey.length} characters (expected 64)`);
     }
