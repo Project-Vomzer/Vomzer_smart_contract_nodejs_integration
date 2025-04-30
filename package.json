@@ -1,0 +1,26 @@
+{
+  "name": "vomzer-socials-nodejs-integration",
+  "version": "1.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node ./bin/www"
+  },
+  "dependencies": {
+    "@mysten/sui": "^1.27.0",
+    "@mysten/sui.js": "^0.54.1",
+    "axios": "^1.8.4",
+    "cookie-parser": "~1.4.4",
+    "debug": "~2.6.9",
+    "dotenv": "^16.4.7",
+    "express": "~4.16.1",
+    "http-errors": "~1.6.3",
+    "morgan": "~1.9.1",
+    "pug": "2.0.0-beta11"
+  },
+  "main": "app.js",
+  "keywords": [],
+  "author": "Adetayo Bravo Jemi",
+  "license": "ISC",
+  "description": ""
+}
