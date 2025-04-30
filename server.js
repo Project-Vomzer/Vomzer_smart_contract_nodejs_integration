@@ -310,6 +310,7 @@ app.post('/api/expend-reward', async (req, res) => {
 // const PORT = process.env.PORT || 3001;
 // app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
+//Use the PORT in .env
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
