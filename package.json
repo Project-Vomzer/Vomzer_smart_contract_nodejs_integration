@@ -18,7 +18,7 @@
     "morgan": "~1.9.1",
     "pug": "2.0.0-beta11"
   },
-  "main": "app.js",
+  "main": "server.js",
   "keywords": [],
   "author": "Adetayo Bravo Jemi",
   "license": "ISC",
