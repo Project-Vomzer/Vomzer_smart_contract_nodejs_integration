@@ -2,13 +2,13 @@ import express from 'express';
 import { createWallet } from './callers/createWallet.js';
 import { fundWallet } from './callers/fundWallet.js';
 import { transferToWallet } from './callers/transferToWallet.js';
+import { transferToAddress } from './callers/transferToAddress.js';
 import { expendReward } from './callers/expendReward.js';
 import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
 
 const app = express();
 app.use(express.json());
 
-// Your base64-encoded private key (replace with your actual key)
 const SENDER_PRIVATE_KEY = process.env.PRIVATE_KEY;
 
 
@@ -28,7 +28,7 @@ app.post('/api/create-wallet', (req, res) => {
 });
 
 
-// Endpoint to transfer SUI to a wallet
+// Endpoint to Fund a wallet with SUI
 app.post('/api/fund-wallet', async (req, res) => {
     try {
         // Explicit values
@@ -147,6 +147,51 @@ app.post('/api/transfer-to-wallet', async (req, res) => {
         const amountInMist = Math.floor(parseFloat(amount) * 1_000_000_000);
 
         const result = await transferToWallet({
+            senderPrivateKey: SENDER_PRIVATE_KEY,
+            destWalletId,
+            amount: amountInMist
+        });
+
+        res.json({
+            success: true,
+            transactionDigest: result.transactionDigest,
+            messageForUser: `Successfully transferred ${amount} SUI to ${destWalletId}`
+        });
+    } catch (error) {
+        console.error('Transfer error:', error);
+        res.status(500).json({
+            success: false,
+            error: `Transfer failed: ${error.message}`
+        });
+    }
+});
+
+
+
+// Endpoint to transfer SUI to an address
+app.post('/api/transfer-to-address', async (req, res) => {
+    try {
+        // Explicit values
+        const destWalletId = "0xb7cd2f1248678984499a78ee51e14a01d1a9efe4d23f11469c3c29a11e4fdf6f";
+        const amount = 0.005; // 5_000_000 in number format (underscore is just for readability in some languages)
+
+        if (!destWalletId || !destWalletId.startsWith('0x')) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid or missing recipient wallet address'
+            });
+        }
+        if (!amount || isNaN(amount) || amount <= 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid or missing amount'
+            });
+        }
+
+        // Convert amount from SUI to MIST (1 SUI = 10^9 MIST)
+        const amountInMist = Math.floor(parseFloat(amount) * 1_000_000_000);
+
+        const result = await transferToAddress({
             senderPrivateKey: SENDER_PRIVATE_KEY,
             destWalletId,
             amount: amountInMist
