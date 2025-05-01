@@ -62,7 +62,7 @@ app.post('/api/fund-wallet', async (req, res) => {
     try {
         // Explicit values
         const recipientWalletId = "0xb7cd2f1248678984499a78ee51e14a01d1a9efe4d23f11469c3c29a11e4fdf6f";
-        const amount = 0.006; // 12_000_000 in number format (underscore is just for readability in some languages)
+        const amount = 0.006; // 6_000_000 in number format (underscore is just for readability in some languages)
 
         if (!recipientWalletId || !recipientWalletId.startsWith('0x')) {
             return res.status(400).json({
@@ -157,7 +157,7 @@ app.post('/api/transfer-to-wallet', async (req, res) => {
     try {
         // Explicit values
         const destWalletId = "0xb7cd2f1248678984499a78ee51e14a01d1a9efe4d23f11469c3c29a11e4fdf6f";
-        const amount = 0.000015; // 15_000 in number format (underscore is just for readability in some languages)
+        const amount = 0.00015; // 15_000 in number format (underscore is just for readability in some languages)
 
         if (!destWalletId || !destWalletId.startsWith('0x')) {
             return res.status(400).json({
@@ -202,7 +202,7 @@ app.post('/api/transfer-to-address', async (req, res) => {
     try {
         // Explicit values
         const destWalletId = "0xb7cd2f1248678984499a78ee51e14a01d1a9efe4d23f11469c3c29a11e4fdf6f";
-        const amount = 0.005; // 5_000_000 in number format (underscore is just for readability in some languages)
+        const amount = 0.00004; // 4_000_0000 in number format (underscore is just for readability in some languages)
 
         if (!destWalletId || !destWalletId.startsWith('0x')) {
             return res.status(400).json({
