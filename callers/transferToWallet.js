@@ -62,7 +62,7 @@ async function checkBalance(walletAddress) {
 export async function transferToWallet({
        senderPrivateKey = SENDER_PRIVATE_KEY,
        destWalletId = '0xb7cd2f1248678984499a78ee51e14a01d1a9efe4d23f11469c3c29a11e4fdf6f',
-       amount = 150_000_000,
+       amount = 15_000,
    }) {
     try {
         const senderKeypair = getKeypairFromPrivateKey(senderPrivateKey);
