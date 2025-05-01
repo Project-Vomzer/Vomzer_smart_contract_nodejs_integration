@@ -12,21 +12,49 @@ app.use(express.json());
 
 const SENDER_PRIVATE_KEY = process.env.PRIVATE_KEY;
 
+app.use(morgan('dev')); // Logs requests in 'dev' format (method, URL, status, response time)
+app.use(express.json()); // Parse JSON request bodies
+
+// Log server startup
+console.log('Starting Vomzer Socials Node.js Integration server...');
+
+
 
 // Endpoint to create a new wallet
 app.post('/api/create-wallet', (req, res) => {
     try {
-        const result = createWallet(); // No async needed since it's off-chain
+        console.log('Received POST /api/create-wallet:', {
+            body: req.body,
+            headers: req.headers,
+        });
+
+        // Call createWallet and validate result
+        const result = createWallet();
+        if (!result || !result.walletAddress || !result.privateKey) {
+            throw new Error('Invalid response from createWallet: missing walletAddress or privateKey');
+        }
+
+        console.log('createWallet result:', result);
+
         res.json({
             success: true,
             walletAddress: result.walletAddress,
             privateKey: result.privateKey,
-            messageForUser: "Wallet created off-chain. Fund it with SUI tokens to use it on-chain."
+            messageForUser: 'Wallet created off-chain. Fund it with SUI tokens to use it on-chain.',
         });
     } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        console.error('Error in /api/create-wallet:', {
+            message: error.message,
+            stack: error.stack,
+        });
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            requestId: req.headers['x-request-id'] || 'unknown', // Include for tracing
+        });
     }
 });
+
 
 
 // Endpoint to Fund a wallet with SUI
@@ -308,11 +336,26 @@ app.post('/api/expend-reward', async (req, res) => {
 });
 
 
-// const PORT = process.env.PORT || 3001;
-// app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 //Use the PORT in .env
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
+
+
+// Global error handling middleware
+app.use((err, req, res, next) => {
+    console.error('Unhandled error:', {
+        message: err.message,
+        stack: err.stack,
+        path: req.path,
+        method: req.method,
+    });
+    res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+        requestId: req.headers['x-request-id'] || 'unknown',
+    });
+});
+
