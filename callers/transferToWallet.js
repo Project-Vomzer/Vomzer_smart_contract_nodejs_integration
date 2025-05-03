@@ -1,13 +1,15 @@
-import { Transaction } from '@mysten/sui/transactions';
+import { TransactionBlock } from '@mysten/sui.js/transactions';
 import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
 import { client } from '../suiClient.js';
 
 const PACKAGE_ID = process.env.PACKAGE_ID;
 const MODULE_NAME = process.env.MODULE_NAME;
 
+
 // Replace this with your actual testnet wallet's private key for testing
 const SENDER_PRIVATE_KEY = process.env.PRIVATE_KEY;
-
+const SENDER_WALLET_OBJECT_ID = process.env.SENDER_WALLET_OBJECT_ID;
+const RECIPIENT_WALLET_OBJECT_ID = process.env.RECIPIENT_WALLET_OBJECT_ID;
 
 function getKeypairFromPrivateKey(hexKey) {
     if (!hexKey) {
@@ -37,13 +39,17 @@ function getKeypairFromPrivateKey(hexKey) {
 
 async function executeTransaction(txb, keypair) {
     try {
-        const result = await client.signAndExecuteTransaction({
-            transaction: txb,
+        const result = await client.signAndExecuteTransactionBlock({
+            transactionBlock: txb,
             signer: keypair,
+            options: {
+                showEffects: true,
+                showEvents: true,
+            },
         });
         return result;
     } catch (error) {
-        console.error('Transaction failed:', error);
+        console.error('Transaction failed:', error.stack);
         throw error;
     }
 }
@@ -59,12 +65,32 @@ async function checkBalance(walletAddress) {
 }
 
 
-export async function transferToWallet({
-       senderPrivateKey = SENDER_PRIVATE_KEY,
-       destWalletId = '0xb7cd2f1248678984499a78ee51e14a01d1a9efe4d23f11469c3c29a11e4fdf6f',
-       amount = 15_000,
-   }) {
+async function getWalletObjectId(address) {
     try {
+        const objects = await client.getOwnedObjects({
+            owner: address,
+            options: { showType: true },
+        });
+        const walletObject = objects.data.find(
+            (obj) => obj.data?.type === `${PACKAGE_ID}::${MODULE_NAME}::Wallet`
+        );
+        if (!walletObject) {
+            throw new Error(`No Wallet object found for address ${address}`);
+        }
+        return walletObject.data.objectId;
+    } catch (error) {
+        console.error(`Failed to fetch Wallet object for ${address}:`, error);
+        throw error;
+    }
+}
+
+
+
+export async function transferToWallet({ senderPrivateKey, destWalletId, amount }) {
+    try {
+        if (!senderPrivateKey) {
+            throw new Error('Sender private key is required');
+        }
         const senderKeypair = getKeypairFromPrivateKey(senderPrivateKey);
         const senderAddress = senderKeypair.getPublicKey().toSuiAddress();
 
@@ -75,21 +101,53 @@ export async function transferToWallet({
             throw new Error('Invalid transfer amount');
         }
 
-        const balance = await checkBalance(senderAddress);
-        const gasEstimate = 1_000_000;
-        if (balance < amount + gasEstimate) {
-            throw new Error('Insufficient balance for transfer and gas');
+
+        // Fetch Wallet object IDs
+        // const sourceWalletId = await getWalletObjectId(senderAddress);
+        // const destWalletObjectId = await getWalletObjectId(destWalletId);
+
+        // Use hardcoded Wallet object IDs from environment variables
+        const sourceWalletId = SENDER_WALLET_OBJECT_ID;
+        const destWalletObjectId = RECIPIENT_WALLET_OBJECT_ID;
+
+        if (!sourceWalletId) {
+            throw new Error(`Sender (${senderAddress}) does not have a Wallet object. A Wallet object is required to transfer funds.`);
+        }
+        if (!destWalletObjectId) {
+            throw new Error(`Recipient (${destWalletId}) does not have a Wallet object. A Wallet object is required to transfer funds.`);
         }
 
-        const txb = new Transaction();
+        const txb = new TransactionBlock();
         txb.moveCall({
             target: `${PACKAGE_ID}::${MODULE_NAME}::transfer_to_wallet`,
             arguments: [
-                txb.object(senderAddress),
-                txb.object(destWalletId),
+                txb.object(sourceWalletId),
+                txb.object(destWalletObjectId),
                 txb.pure.u64(amount),
             ],
         });
+
+
+        // Perform dry run to estimate gas
+        const dryRunResult = await client.dryRunTransactionBlock({
+            transactionBlock: await txb.build({ client }),
+        });
+        if (dryRunResult.effects.status.status !== 'success') {
+            throw new Error(`Dry run failed: ${dryRunResult.effects.status.error || 'Unknown error'}`);
+        }
+        // Calculate total gas cost (computation + storage) with a 20% buffer
+        const gasUsed = dryRunResult.effects.gasUsed;
+        const gasBudget = Math.floor(
+            (gasUsed.computationCost + gasUsed.storageCost) * 1.2
+        );
+        // Check balance
+        const balance = await checkBalance(senderAddress);
+        if (balance < amount + gasBudget) {
+            throw new Error(`Insufficient balance for transfer (${amount} MIST) and gas (${gasBudget} MIST)`);
+        }
+        // Set gas budget on the TransactionBlock
+        txb.setGasBudget(gasBudget);
+
 
         const result = await executeTransaction(txb, senderKeypair);
         return {
@@ -98,13 +156,13 @@ export async function transferToWallet({
             senderAddress,
         };
     } catch (error) {
-        console.error('Transfer failed:', error);
+        console.error('Transfer failed:', error.stack);
         return { success: false, error: `Transfer failed: ${error.message}` };
     }
 }
 
 
-export function getSenderAddress(senderPrivateKey = SENDER_PRIVATE_KEY) {
+export function getSenderAddress(senderPrivateKey) {
     try {
         const keypair = getKeypairFromPrivateKey(senderPrivateKey);
         return keypair.getPublicKey().toSuiAddress();
@@ -113,4 +171,3 @@ export function getSenderAddress(senderPrivateKey = SENDER_PRIVATE_KEY) {
         throw new Error('Invalid private key');
     }
 }
-

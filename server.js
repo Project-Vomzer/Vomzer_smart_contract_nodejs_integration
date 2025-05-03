@@ -1,7 +1,8 @@
 import express from 'express';
 import morgan from 'morgan';
+import { createSuiAddress } from './callers/createSuiAddress.js';
 import { createWallet } from './callers/createWallet.js';
-import { fundWallet } from './callers/fundWallet.js';
+import { fundSuiAddress } from './callers/fundSuiAddress.js';
 import { transferToWallet } from './callers/transferToWallet.js';
 import { transferToAddress } from './callers/transferToAddress.js';
 import { expendReward } from './callers/expendReward.js';
@@ -21,20 +22,20 @@ console.log('Starting Vomzer Socials Node.js Integration server...');
 
 
 // Endpoint to create a new wallet
-app.post('/api/create-wallet', (req, res) => {
+app.post('/api/create-sui-address', (req, res) => {
     try {
         console.log('Received POST /api/create-wallet:', {
             body: req.body,
             headers: req.headers,
         });
 
-        // Call createWallet and validate result
-        const result = createWallet();
+        // Call createSuiAddress and validate result
+        const result = createSuiAddress();
         if (!result || !result.walletAddress || !result.privateKey) {
-            throw new Error('Invalid response from createWallet: missing walletAddress or privateKey');
+            throw new Error('Invalid response from createSuiAddress: missing walletAddress or privateKey');
         }
 
-        console.log('createWallet result:', result);
+        console.log('createSuiAddress result:', result);
 
         res.json({
             success: true,
@@ -58,7 +59,7 @@ app.post('/api/create-wallet', (req, res) => {
 
 
 // Endpoint to Fund a wallet with SUI
-app.post('/api/fund-wallet', async (req, res) => {
+app.post('/api/fund-sui-address', async (req, res) => {
     try {
         // Explicit values
         const recipientWalletId = "0xb7cd2f1248678984499a78ee51e14a01d1a9efe4d23f11469c3c29a11e4fdf6f";
@@ -125,7 +126,7 @@ app.post('/api/fund-wallet', async (req, res) => {
         // Convert amount from SUI to MIST (1 SUI = 10^9 MIST)
         const amountInMist = Math.floor(parseFloat(amount) * 1_000_000_000);
 
-        const result = await fundWallet({
+        const result = await fundSuiAddress({
             SENDER_PRIVATE_KEY: privateKeyBytes, // Pass bytes directly
             senderAddress,
             recipientWalletId,
@@ -146,6 +147,41 @@ app.post('/api/fund-wallet', async (req, res) => {
         res.status(500).json({
             success: false,
             error: `Funding failed: ${error.message}`
+        });
+    }
+});
+
+
+
+// Endpoint to create a Wallet object
+app.post('/api/create-wallet', async (req, res) => {
+    try {
+        const { address, privateKey } = req.body || {};
+
+        const result = await createWallet({
+            address,
+            privateKey,
+        });
+
+        if (!result.success) {
+            return res.status(500).json({
+                success: false,
+                error: result.error || 'Failed to create Wallet',
+            });
+        }
+
+        res.json({
+            success: true,
+            walletObjectId: result.walletObjectId,
+            transactionDigest: result.transactionDigest,
+            address: result.address,
+            messageForUser: `Successfully created Wallet object ${result.walletObjectId} for address ${result.address}`,
+        });
+    } catch (error) {
+        console.error('Create Wallet error:', error);
+        res.status(500).json({
+            success: false,
+            error: `Failed to create Wallet: ${error.message}`,
         });
     }
 });
@@ -180,6 +216,13 @@ app.post('/api/transfer-to-wallet', async (req, res) => {
             destWalletId,
             amount: amountInMist
         });
+
+        if (!result.success) {
+            return res.status(500).json({
+                success: false,
+                error: result.error || 'Transaction failed',
+            });
+        }
 
         res.json({
             success: true,

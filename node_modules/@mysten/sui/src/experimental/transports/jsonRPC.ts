@@ -18,6 +18,7 @@ import { normalizeStructTag } from '../../utils/sui-types.js';
 import { Experimental_CoreClient } from '../core.js';
 import { ObjectError } from '../errors.js';
 import type { Experimental_SuiClientTypes } from '../types.js';
+import { parseTransactionEffects } from './utils.js';
 
 export class JSONRpcTransport extends Experimental_CoreClient {
 	#jsonRpcClient: SuiClient;
@@ -39,6 +40,7 @@ export class JSONRpcTransport extends Experimental_CoreClient {
 					showType: true,
 					showBcs: true,
 				},
+				signal: options.signal,
 			});
 
 			for (const [idx, object] of objects.entries()) {
@@ -64,6 +66,7 @@ export class JSONRpcTransport extends Experimental_CoreClient {
 				showType: true,
 				showBcs: true,
 			},
+			signal: options.signal,
 		});
 
 		return {
@@ -83,6 +86,9 @@ export class JSONRpcTransport extends Experimental_CoreClient {
 		const coins = await this.#jsonRpcClient.getCoins({
 			owner: options.address,
 			coinType: options.coinType,
+			limit: options.limit,
+			cursor: options.cursor,
+			signal: options.signal,
 		});
 
 		return {
@@ -114,6 +120,7 @@ export class JSONRpcTransport extends Experimental_CoreClient {
 		const balance = await this.#jsonRpcClient.getBalance({
 			owner: options.address,
 			coinType: options.coinType,
+			signal: options.signal,
 		});
 
 		return {
@@ -126,6 +133,7 @@ export class JSONRpcTransport extends Experimental_CoreClient {
 	async getAllBalances(options: Experimental_SuiClientTypes.GetAllBalancesOptions) {
 		const balances = await this.#jsonRpcClient.getAllBalances({
 			owner: options.address,
+			signal: options.signal,
 		});
 
 		return {
@@ -146,6 +154,7 @@ export class JSONRpcTransport extends Experimental_CoreClient {
 				showRawEffects: true,
 				showEvents: true,
 			},
+			signal: options.signal,
 		});
 
 		return {
@@ -162,6 +171,7 @@ export class JSONRpcTransport extends Experimental_CoreClient {
 				showObjectChanges: true,
 				showRawInput: true,
 			},
+			signal: options.signal,
 		});
 
 		return {
@@ -172,6 +182,7 @@ export class JSONRpcTransport extends Experimental_CoreClient {
 		const tx = Transaction.from(options.transaction);
 		const result = await this.#jsonRpcClient.dryRunTransactionBlock({
 			transactionBlock: options.transaction,
+			signal: options.signal,
 		});
 
 		return {
@@ -186,8 +197,10 @@ export class JSONRpcTransport extends Experimental_CoreClient {
 			},
 		};
 	}
-	async getReferenceGasPrice() {
-		const referenceGasPrice = await this.#jsonRpcClient.getReferenceGasPrice();
+	async getReferenceGasPrice(options?: Experimental_SuiClientTypes.GetReferenceGasPriceOptions) {
+		const referenceGasPrice = await this.#jsonRpcClient.getReferenceGasPrice({
+			signal: options?.signal,
+		});
 		return {
 			referenceGasPrice: String(referenceGasPrice),
 		};
@@ -201,18 +214,32 @@ export class JSONRpcTransport extends Experimental_CoreClient {
 		});
 
 		return {
-			dynamicFields: dynamicFields.data.map((dynamicField) => ({
-				id: dynamicField.objectId,
-				version: dynamicField.version,
-				digest: dynamicField.digest,
-				type: dynamicField.objectType,
-				name: {
-					type: dynamicField.name.type,
-					bcs: fromBase64(dynamicField.bcsName),
-				},
-			})),
+			dynamicFields: dynamicFields.data.map((dynamicField) => {
+				return {
+					id: dynamicField.objectId,
+					type: dynamicField.objectType,
+					name: {
+						type: dynamicField.name.type,
+						bcs: fromBase64(dynamicField.bcsName),
+					},
+				};
+			}),
 			hasNextPage: dynamicFields.hasNextPage,
 			cursor: dynamicFields.nextCursor,
+		};
+	}
+
+	async verifyZkLoginSignature(options: Experimental_SuiClientTypes.VerifyZkLoginSignatureOptions) {
+		const result = await this.#jsonRpcClient.verifyZkLoginSignature({
+			bytes: options.bytes,
+			signature: options.signature,
+			intentScope: options.intentScope,
+			author: options.author,
+		});
+
+		return {
+			success: result.success,
+			errors: result.errors,
 		};
 	}
 }
@@ -280,134 +307,22 @@ function parseTransaction(
 	transaction: SuiTransactionBlockResponse,
 ): Experimental_SuiClientTypes.TransactionResponse {
 	const parsedTx = bcs.SenderSignedData.parse(fromBase64(transaction.rawTransaction!))[0];
-
-	return {
-		digest: transaction.digest,
-		effects: parseTransactionEffects({
-			effects: new Uint8Array(transaction.rawEffects!),
-			objectChanges: transaction.objectChanges ?? null,
-		}),
-		bcs: bcs.TransactionData.serialize(parsedTx.intentMessage.value).toBytes(),
-		signatures: parsedTx.txSignatures,
-	};
-}
-
-function parseTransactionEffects({
-	effects,
-	epoch,
-	objectChanges,
-}: {
-	effects: Uint8Array;
-	objectChanges: SuiObjectChange[] | null;
-	epoch?: string | null;
-}): Experimental_SuiClientTypes.TransactionEffects {
-	const parsed = bcs.TransactionEffects.parse(effects);
 	const objectTypes: Record<string, string> = {};
 
-	objectChanges?.forEach((change) => {
+	transaction.objectChanges?.forEach((change) => {
 		if (change.type !== 'published') {
 			objectTypes[change.objectId] = change.objectType;
 		}
 	});
 
-	switch (parsed.$kind) {
-		case 'V1':
-			return parseTransactionEffectsV1({ bytes: effects, effects: parsed.V1, epoch, objectTypes });
-		case 'V2':
-			return parseTransactionEffectsV2({ bytes: effects, effects: parsed.V2, epoch, objectTypes });
-		default:
-			throw new Error(
-				`Unknown transaction effects version: ${(parsed as { $kind: string }).$kind}`,
-			);
-	}
-}
-
-function parseTransactionEffectsV1(_: {
-	bytes: Uint8Array;
-	effects: NonNullable<(typeof bcs.TransactionEffects.$inferType)['V1']>;
-	epoch?: string | null;
-	objectTypes: Record<string, string>;
-}): Experimental_SuiClientTypes.TransactionEffects {
-	throw new Error('V1 effects are not supported yet');
-}
-
-function parseTransactionEffectsV2({
-	bytes,
-	effects,
-	epoch,
-	objectTypes,
-}: {
-	bytes: Uint8Array;
-	effects: NonNullable<(typeof bcs.TransactionEffects.$inferType)['V2']>;
-	epoch?: string | null;
-	objectTypes: Record<string, string>;
-}): Experimental_SuiClientTypes.TransactionEffects {
-	const changedObjects = effects.changedObjects.map(
-		([id, change]): Experimental_SuiClientTypes.ChangedObject => {
-			return {
-				id,
-				inputState: change.inputState.$kind === 'Exist' ? 'Exists' : 'DoesNotExist',
-				inputVersion: change.inputState.Exist?.[0][0] ?? null,
-				inputDigest: change.inputState.Exist?.[0][1] ?? null,
-				inputOwner: change.inputState.Exist?.[1] ?? null,
-				outputState:
-					change.outputState.$kind === 'NotExist' ? 'DoesNotExist' : change.outputState.$kind,
-				outputVersion:
-					change.outputState.$kind === 'PackageWrite'
-						? change.outputState.PackageWrite?.[0]
-						: change.outputState.ObjectWrite
-							? effects.lamportVersion
-							: null,
-				outputDigest:
-					change.outputState.$kind === 'PackageWrite'
-						? change.outputState.PackageWrite?.[1]
-						: (change.outputState.ObjectWrite?.[0] ?? null),
-				outputOwner: change.outputState.ObjectWrite ? change.outputState.ObjectWrite[1] : null,
-				idOperation: change.idOperation.$kind,
-				objectType: objectTypes[id] ?? null,
-			};
-		},
-	);
-
 	return {
-		bcs: bytes,
-		digest: effects.transactionDigest,
-		version: 2,
-		status:
-			effects.status.$kind === 'Success'
-				? {
-						success: true,
-						error: null,
-					}
-				: {
-						success: false,
-						// TODO: add command
-						error: effects.status.Failed.error.$kind,
-					},
-		epoch: epoch ?? null,
-		gasUsed: effects.gasUsed,
-		transactionDigest: effects.transactionDigest,
-		gasObject:
-			effects.gasObjectIndex === null ? null : (changedObjects[effects.gasObjectIndex] ?? null),
-		eventsDigest: effects.eventsDigest,
-		dependencies: effects.dependencies,
-		lamportVersion: effects.lamportVersion,
-		changedObjects,
-		unchangedSharedObjects: effects.unchangedSharedObjects.map(
-			([objectId, object]): Experimental_SuiClientTypes.UnchangedSharedObject => {
-				return {
-					kind: object.$kind,
-					objectId: objectId,
-					version:
-						object.$kind === 'ReadOnlyRoot'
-							? object.ReadOnlyRoot[0]
-							: (object[object.$kind] as string | null),
-					digest: object.$kind === 'ReadOnlyRoot' ? object.ReadOnlyRoot[1] : null,
-					objectType: objectTypes[objectId] ?? null,
-				};
-			},
-		),
-		auxiliaryDataDigest: effects.auxDataDigest,
+		digest: transaction.digest,
+		effects: parseTransactionEffects({
+			effects: new Uint8Array(transaction.rawEffects!),
+			objectTypes,
+		}),
+		bcs: bcs.TransactionData.serialize(parsedTx.intentMessage.value).toBytes(),
+		signatures: parsedTx.txSignatures,
 	};
 }
 

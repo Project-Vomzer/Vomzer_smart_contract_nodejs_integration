@@ -12,6 +12,7 @@ import type { Argument, CallArg, Command, OpenMoveTypeSignature } from './data/i
 import { Inputs } from './Inputs.js';
 import { getPureBcsSchema, isTxContext, normalizedTypeToMoveTypeSignature } from './serializer.js';
 import type { TransactionDataBuilder } from './TransactionData.js';
+import { chunk } from '@mysten/utils';
 
 // The maximum objects that can be fetched at once using multiGetObjects.
 const MAX_OBJECTS_PER_FETCH = 50;
@@ -478,10 +479,4 @@ export function getClient(options: BuildTransactionOptions): SuiClient {
 	}
 
 	return options.client;
-}
-
-function chunk<T>(arr: T[], size: number): T[][] {
-	return Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
-		arr.slice(i * size, i * size + size),
-	);
 }

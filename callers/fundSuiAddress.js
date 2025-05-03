@@ -34,7 +34,7 @@ function getKeypairFromPrivateKey(hexKey) {
 
 
 // Native SUI transfer
-export async function fundWallet({
+export async function fundSuiAddress({
          senderPrivateKey = SENDER_PRIVATE_KEY,
          recipientWalletId,
          amount = 6_000_000, // Amount in MIST (0.012 SUI)

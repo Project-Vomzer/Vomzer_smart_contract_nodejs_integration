@@ -100,7 +100,7 @@ https://stackoverflow.com/questions/52676244/node-version-not-updating-after-nvm
 To run E2E tests against Devnet
 
 ```
-VITE_FAUCET_URL='https://faucet.devnet.sui.io:443/gas' VITE_FULLNODE_URL='https://fullnode.devnet.sui.io' pnpm --filter @mysten/sui exec vitest e2e
+VITE_FAUCET_URL='https://faucet.devnet.sui.io:443/v2/gas' VITE_FULLNODE_URL='https://fullnode.devnet.sui.io' pnpm --filter @mysten/sui exec vitest e2e
 ```
 
 ## Connecting to Sui Network
@@ -157,13 +157,14 @@ await client.getCoins({
 
 ## Getting coins from the faucet
 
-You can request sui from the faucet when running against devnet, testnet, or localnet
+You can request sui from the faucet when running against devnet or localnet. For testnet, visit
+faucet.sui.io.
 
 ```typescript
-import { getFaucetHost, requestSuiFromFaucetV0 } from '@mysten/sui/faucet';
+import { getFaucetHost, requestSuiFromFaucetV2 } from '@mysten/sui/faucet';
 
-await requestSuiFromFaucetV0({
-	host: getFaucetHost('testnet'),
+await requestSuiFromFaucetV2({
+	host: getFaucetHost('devnet'),
 	recipient: '0xcc2bd176a478baea9a0de7a24cd927661cc6e860d5bacecb9a138ef20dbab231',
 });
 ```
