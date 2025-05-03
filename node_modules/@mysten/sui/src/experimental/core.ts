@@ -17,6 +17,19 @@ export abstract class Experimental_CoreClient
 		options: Experimental_SuiClientTypes.GetObjectsOptions,
 	): Promise<Experimental_SuiClientTypes.GetObjectsResponse>;
 
+	async getObject(
+		options: Experimental_SuiClientTypes.GetObjectOptions,
+	): Promise<Experimental_SuiClientTypes.GetObjectResponse> {
+		const { objectId } = options;
+		const {
+			objects: [result],
+		} = await this.getObjects({ objectIds: [objectId], signal: options.signal });
+		if (result instanceof Error) {
+			throw result;
+		}
+		return { object: result };
+	}
+
 	abstract getCoins(
 		options: Experimental_SuiClientTypes.GetCoinsOptions,
 	): Promise<Experimental_SuiClientTypes.GetCoinsResponse>;
@@ -45,7 +58,9 @@ export abstract class Experimental_CoreClient
 		options: Experimental_SuiClientTypes.DryRunTransactionOptions,
 	): Promise<Experimental_SuiClientTypes.DryRunTransactionResponse>;
 
-	abstract getReferenceGasPrice(): Promise<Experimental_SuiClientTypes.GetReferenceGasPriceResponse>;
+	abstract getReferenceGasPrice(
+		options?: Experimental_SuiClientTypes.GetReferenceGasPriceOptions,
+	): Promise<Experimental_SuiClientTypes.GetReferenceGasPriceResponse>;
 
 	abstract getDynamicFields(
 		options: Experimental_SuiClientTypes.GetDynamicFieldsOptions,
@@ -63,6 +78,7 @@ export abstract class Experimental_CoreClient
 			objects: [fieldObject],
 		} = await this.getObjects({
 			objectIds: [fieldId],
+			signal: options.signal,
 		});
 
 		if (fieldObject instanceof Error) {

@@ -26,17 +26,10 @@ export interface SelfRegisteringClientExtension<
 	};
 }
 
-export type Simplify<T> = {
-	[K in keyof T]: T[K];
-} & {};
-
-export type UnionToIntersection<U> = (U extends any ? (k: U) => void : never) extends (
-	k: infer I,
-) => void
-	? I
-	: never;
-
-export type ClientWithExtensions<T> = Experimental_BaseClient & T;
+export type ClientWithExtensions<
+	T,
+	Base extends Experimental_BaseClient = Experimental_BaseClient,
+> = Base & T;
 
 export namespace Experimental_SuiClientTypes {
 	export type Network = 'mainnet' | 'testnet' | 'devnet' | 'localnet' | (string & {});
@@ -62,6 +55,10 @@ export namespace Experimental_SuiClientTypes {
 		objectIds: string[];
 	}
 
+	export interface GetObjectOptions extends CoreClientMethodOptions {
+		objectId: string;
+	}
+
 	export interface GetOwnedObjectsOptions extends CoreClientMethodOptions {
 		address: string;
 		limit?: number;
@@ -72,6 +69,8 @@ export namespace Experimental_SuiClientTypes {
 	export interface GetCoinsOptions extends CoreClientMethodOptions {
 		address: string;
 		coinType: string;
+		limit?: number;
+		cursor?: string | null;
 	}
 
 	export interface GetDynamicFieldsOptions extends CoreClientMethodOptions {
@@ -87,6 +86,10 @@ export namespace Experimental_SuiClientTypes {
 
 	export interface GetObjectsResponse {
 		objects: (ObjectResponse | Error)[];
+	}
+
+	export interface GetObjectResponse {
+		object: ObjectResponse;
 	}
 
 	export interface GetOwnedObjectsResponse {
@@ -118,11 +121,9 @@ export namespace Experimental_SuiClientTypes {
 		hasNextPage: boolean;
 		cursor: string | null;
 		dynamicFields: {
-			name: DynamicFieldName;
 			id: string;
-			version: string;
-			digest: string;
 			type: string;
+			name: DynamicFieldName;
 		}[];
 	}
 
@@ -189,11 +190,11 @@ export namespace Experimental_SuiClientTypes {
 	export interface TransactionResponse {
 		digest: string;
 		signatures: string[];
-		// TODO: Return parsed data:
-		// We need structured representations of effects, events, and transaction data
-		bcs: Uint8Array;
 		effects: TransactionEffects;
-		events?: Uint8Array;
+		// TODO: Return parsed data:
+		// We need structured representations events, and transaction data
+		bcs: Uint8Array;
+		// events?: Uint8Array;
 	}
 
 	export interface GetTransactionOptions extends CoreClientMethodOptions {
@@ -221,12 +222,35 @@ export namespace Experimental_SuiClientTypes {
 		transaction: TransactionResponse;
 	}
 
+	export interface GetReferenceGasPriceOptions extends CoreClientMethodOptions {}
+
 	export interface TransportMethods {
-		getReferenceGasPrice?: () => Promise<GetReferenceGasPriceResponse>;
+		getReferenceGasPrice?: (
+			options?: GetReferenceGasPriceOptions,
+		) => Promise<GetReferenceGasPriceResponse>;
 	}
 
 	export interface GetReferenceGasPriceResponse {
 		referenceGasPrice: string;
+	}
+
+	/** ZkLogin methods */
+	export interface VerifyZkLoginSignatureOptions extends CoreClientMethodOptions {
+		bytes: string;
+		signature: string;
+		intentScope: 'TransactionData' | 'PersonalMessage';
+		author: string;
+	}
+
+	export interface ZkLoginVerifyResponse {
+		success: boolean;
+		errors: string[];
+	}
+
+	export interface TransportMethods {
+		verifyZkLoginSignature?: (
+			options: VerifyZkLoginSignatureOptions,
+		) => Promise<ZkLoginVerifyResponse>;
 	}
 
 	/** ObjectOwner types */

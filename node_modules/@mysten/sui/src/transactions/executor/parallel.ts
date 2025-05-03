@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { toBase64 } from '@mysten/bcs';
-
+import { promiseWithResolvers } from '@mysten/utils';
 import { bcs } from '../../bcs/index.js';
 import type { SuiObjectRef } from '../../bcs/types.js';
 import type {
@@ -455,16 +455,4 @@ export class ParallelTransactionExecutor {
 
 		await this.#client.waitForTransaction({ digest: result.digest });
 	}
-}
-
-function promiseWithResolvers<T>() {
-	let resolve: (value: T) => void;
-	let reject: (reason: any) => void;
-
-	const promise = new Promise<T>((_resolve, _reject) => {
-		resolve = _resolve;
-		reject = _reject;
-	});
-
-	return { promise, resolve: resolve!, reject: reject! };
 }

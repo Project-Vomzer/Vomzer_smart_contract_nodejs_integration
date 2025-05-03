@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 /* eslint-disable @typescript-eslint/ban-types */
 
+import type { Simplify, UnionToIntersection } from '@mysten/utils';
 import { ClientCache } from './cache.js';
 import type { Experimental_CoreClient } from './core.js';
 import type {
 	ClientWithExtensions,
 	Experimental_SuiClientTypes,
-	Simplify,
 	SuiClientRegistration,
-	UnionToIntersection,
 } from './types.js';
 
 export abstract class Experimental_BaseClient {
@@ -38,26 +37,21 @@ export abstract class Experimental_BaseClient {
 			),
 		) as ClientWithExtensions<
 			Simplify<
-				Omit<
+				UnionToIntersection<
 					{
-						[K in keyof this]: this[K];
-					},
-					keyof Experimental_BaseClient
-				> &
-					UnionToIntersection<
-						{
-							[K in keyof Registrations]: Registrations[K] extends SuiClientRegistration<
-								this,
-								infer Name extends string,
-								infer Extension
-							>
-								? {
-										[K2 in Name]: Extension;
-									}
-								: never;
-						}[number]
-					>
-			>
+						[K in keyof Registrations]: Registrations[K] extends SuiClientRegistration<
+							this,
+							infer Name extends string,
+							infer Extension
+						>
+							? {
+									[K2 in Name]: Extension;
+								}
+							: never;
+					}[number]
+				>
+			>,
+			this
 		>;
 	}
 }
