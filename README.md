@@ -1,1 +1,1 @@
-# Vomzer_socials_nodejs_integration
+# Vomzer_smart_contract_nodejs_integration

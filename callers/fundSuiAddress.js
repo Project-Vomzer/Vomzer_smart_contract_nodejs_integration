@@ -37,7 +37,7 @@ function getKeypairFromPrivateKey(hexKey) {
 export async function fundSuiAddress({
          senderPrivateKey = SENDER_PRIVATE_KEY,
          recipientWalletId,
-         amount = 6_000_000, // Amount in MIST (0.012 SUI)
+         amount = 6_000_000, // Amount in MIST 0.006 SUI)
         }) {
     try {
         if (!senderPrivateKey) {
