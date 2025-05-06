@@ -3,10 +3,12 @@ import morgan from 'morgan';
 import { createSuiAddress } from './callers/createSuiAddress.js';
 import { createWallet } from './callers/createWallet.js';
 import { fundSuiAddress } from './callers/fundSuiAddress.js';
-import { transferToWallet } from './callers/transferToWallet.js';
+import { transferToWallet} from './callers/transferToWallet.js';
+import { depositToWallet } from './callers/depositToWallet.js';
 import { transferToAddress } from './callers/transferToAddress.js';
 import { expendReward } from './callers/expendReward.js';
 import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
+
 
 const app = express();
 app.use(express.json());
@@ -188,52 +190,98 @@ app.post('/api/create-wallet', async (req, res) => {
 
 
 
+app.post('/api/deposit-to-wallet', async (req, res) => {
+    try {
+        // Hardcoded parameters for testing
+        const depositParams = {
+            senderPrivateKey: process.env.PRIVATE_KEY,
+            walletId: "0x03355332cb05eb346e8b71de30c374726bb703f00c15582b598e11a01693009e",
+            amountInMist: 30_000_000 // 0.0001 SUI
+        };
+
+        // Call depositToWallet with hardcoded parameters
+        const result = await depositToWallet(depositParams);
+
+        if (result.success) {
+            res.status(200).json({
+                success: true,
+                transactionDigest: result.transactionDigest,
+                senderAddress: result.senderAddress
+            });
+        } else {
+            res.status(400).json({
+                success: false,
+                error: result.error
+            });
+        }
+    } catch (error) {
+        console.error('Deposit API error:', error.stack);
+        res.status(500).json({
+            success: false,
+            error: `Server error: ${error.message}`
+        });
+    }
+});
+
+
+
 // Endpoint to transfer SUI to a wallet
 app.post('/api/transfer-to-wallet', async (req, res) => {
     try {
-        // Explicit values
-        const destWalletId = "0xb7cd2f1248678984499a78ee51e14a01d1a9efe4d23f11469c3c29a11e4fdf6f";
-        const amount = 0.00015; // 15_000 in number format (underscore is just for readability in some languages)
+        // Hardcoded parameters for testing
+        const transferParams = {
+            senderPrivateKey: process.env.PRIVATE_KEY,
+            sourceWalletId: "0x03355332cb05eb346e8b71de30c374726bb703f00c15582b598e11a01693009e",
+            destWalletId: "0xb38b6ca8dd130ee6938a20a4cccbcb33c62c693c012eb3b2de951a5cf5006012",
+            recipientAddress: "0x52f03ac4ac477f9ec51f0e51b9a6d720a311e3a8c0c11cd8c2eeb9eb44d475e5",
+            amount: 0.015 // Amount in MIST (0.00006 SUI)
+        };
 
-        if (!destWalletId || !destWalletId.startsWith('0x')) {
-            return res.status(400).json({
+        // Call transferToWallet with hardcoded parameters
+        const result = await transferToWallet(transferParams);
+
+        if (result.success) {
+            res.status(200).json({
+                success: true,
+                transactionDigest: result.transactionDigest,
+                senderAddress: result.senderAddress
+            });
+        } else {
+            res.status(400).json({
                 success: false,
-                error: 'Invalid or missing recipient wallet address'
+                error: result.error
             });
         }
-        if (!amount || isNaN(amount) || amount <= 0) {
-            return res.status(400).json({
-                success: false,
-                error: 'Invalid or missing amount'
-            });
-        }
-
-        // Convert amount from SUI to MIST (1 SUI = 10^9 MIST)
-        const amountInMist = Math.floor(parseFloat(amount) * 1_000_000_000);
-
-        const result = await transferToWallet({
-            senderPrivateKey: SENDER_PRIVATE_KEY,
-            destWalletId,
-            amount: amountInMist
-        });
-
-        if (!result.success) {
-            return res.status(500).json({
-                success: false,
-                error: result.error || 'Transaction failed',
-            });
-        }
-
-        res.json({
-            success: true,
-            transactionDigest: result.transactionDigest,
-            messageForUser: `Successfully transferred ${amount} SUI to ${destWalletId}`
-        });
     } catch (error) {
-        console.error('Transfer error:', error);
+        console.error('Transfer API error:', error.stack);
         res.status(500).json({
             success: false,
-            error: `Transfer failed: ${error.message}`
+            error: `Server error: ${error.message}`
+        });
+    }
+});
+
+// API endpoint to fetch available wallet objects for an address
+app.post('/api/wallet-objects', async (req, res) => {
+    try {
+        const { address } = req.body;
+        if (!address || !address.startsWith('0x')) {
+            return res.status(400).json({
+                success: false,
+                error: 'Valid Sui address is required'
+            });
+        }
+
+        const walletObjects = await getAvailableWalletObjects(address);
+        res.status(200).json({
+            success: true,
+            walletObjects
+        });
+    } catch (error) {
+        console.error('Wallet objects API error:', error.stack);
+        res.status(500).json({
+            success: false,
+            error: `Server error: ${error.message}`
         });
     }
 });

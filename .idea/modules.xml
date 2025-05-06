@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/../Vomzer_socials_nodejs_integration.iml" filepath="$PROJECT_DIR$/../Vomzer_socials_nodejs_integration.iml" />
+      <module fileurl="file://$PROJECT_DIR$/Vomzer_smart_contract_nodejs_integration.iml" filepath="$PROJECT_DIR$/Vomzer_smart_contract_nodejs_integration.iml" />
     </modules>
   </component>
 </project>

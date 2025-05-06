@@ -26,7 +26,6 @@ function getKeypairFromPrivateKey(hexKey) {
 }
 
 
-
 export async function createWallet({
        privateKey = PRIVATE_KEY,
        address = senderAddress } = {}) {

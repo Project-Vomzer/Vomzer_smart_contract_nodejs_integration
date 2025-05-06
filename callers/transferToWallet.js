@@ -4,12 +4,8 @@ import { client } from '../suiClient.js';
 
 const PACKAGE_ID = process.env.PACKAGE_ID;
 const MODULE_NAME = process.env.MODULE_NAME;
-
-
-// Replace this with your actual testnet wallet's private key for testing
-const SENDER_PRIVATE_KEY = process.env.PRIVATE_KEY;
-const SENDER_WALLET_OBJECT_ID = process.env.SENDER_WALLET_OBJECT_ID;
-const RECIPIENT_WALLET_OBJECT_ID = process.env.RECIPIENT_WALLET_OBJECT_ID;
+const PRIVATE_KEY = process.env.PRIVATE_KEY;
+const FIXED_GAS_BUDGET = 100_000_000; // 0.1 SUI in MIST
 
 function getKeypairFromPrivateKey(hexKey) {
     if (!hexKey) {
@@ -47,6 +43,7 @@ async function executeTransaction(txb, keypair) {
                 showEvents: true,
             },
         });
+        console.log('Transaction result:', JSON.stringify(result, null, 2));
         return result;
     } catch (error) {
         console.error('Transaction failed:', error.stack);
@@ -56,99 +53,159 @@ async function executeTransaction(txb, keypair) {
 
 async function checkBalance(walletAddress) {
     try {
-        const balance = await client.getBalance({ owner: walletAddress });
+        const balance = await client.getBalance({
+            owner: walletAddress,
+            coinType: '0x2::sui::SUI',
+        });
         return parseInt(balance.totalBalance); // Balance in MIST
     } catch (error) {
-        console.error('Failed to check balance:', error);
+        console.error(`Failed to check balance for ${walletAddress}:`, error);
         throw error;
     }
 }
 
-
-async function getWalletObjectId(address) {
+async function verifyWalletObject(objectId, ownerAddress) {
     try {
-        const objects = await client.getOwnedObjects({
-            owner: address,
-            options: { showType: true },
+        const object = await client.getObject({
+            id: objectId,
+            options: { showType: true, showOwner: true, showContent: true },
         });
-        const walletObject = objects.data.find(
-            (obj) => obj.data?.type === `${PACKAGE_ID}::${MODULE_NAME}::Wallet`
-        );
-        if (!walletObject) {
-            throw new Error(`No Wallet object found for address ${address}`);
+        if (!object.data) {
+            throw new Error(`Wallet object ${objectId} not found`);
         }
-        return walletObject.data.objectId;
+        if (object.data.type !== `${PACKAGE_ID}::${MODULE_NAME}::Wallet`) {
+            throw new Error(`Object ${objectId} is not a Wallet object, got type ${object.data.type}`);
+        }
+        if (object.data.owner?.AddressOwner !== ownerAddress) {
+            throw new Error(`Wallet object ${objectId} is not owned by ${ownerAddress}`);
+        }
+        console.log(`Verified Wallet object ${objectId} for owner ${ownerAddress}`);
+        return object.data.content;
     } catch (error) {
-        console.error(`Failed to fetch Wallet object for ${address}:`, error);
+        console.error(`Failed to verify wallet object ${objectId}:`, error);
+        throw error;
+    }
+}
+
+async function checkWalletBalance(walletObjectId) {
+    try {
+        const object = await client.getObject({
+            id: walletObjectId,
+            options: { showContent: true },
+        });
+        if (!object.data || !object.data.content) {
+            throw new Error(`Wallet object ${walletObjectId} not found`);
+        }
+        const content = object.data.content;
+        if (content.dataType !== 'moveObject') {
+            throw new Error(`Object ${walletObjectId} is not a Move object`);
+        }
+        const balanceValue = content.fields.balance || 0; // Coin<SUI> balance is in fields.balance
+        console.log(`Wallet ${walletObjectId} balance: ${balanceValue} MIST`);
+        return parseInt(balanceValue);
+    } catch (error) {
+        console.error(`Failed to check balance for wallet ${walletObjectId}:`, error);
         throw error;
     }
 }
 
 
-
-export async function transferToWallet({ senderPrivateKey, destWalletId, amount }) {
+export async function transferToWallet({
+           senderPrivateKey = PRIVATE_KEY,
+           sourceWalletId = "0x03355332cb05eb346e8b71de30c374726bb703f00c15582b598e11a01693009e",
+           destWalletId = "0xb38b6ca8dd130ee6938a20a4cccbcb33c62c693c012eb3b2de951a5cf5006012",
+           recipientAddress = "0x52f03ac4ac477f9ec51f0e51b9a6d720a311e3a8c0c11cd8c2eeb9eb44d475e5",
+           amount = 0.015 // Amount in SUI
+       }) {
     try {
+        // Validate inputs
         if (!senderPrivateKey) {
             throw new Error('Sender private key is required');
         }
-        const senderKeypair = getKeypairFromPrivateKey(senderPrivateKey);
-        const senderAddress = senderKeypair.getPublicKey().toSuiAddress();
-
+        if (!sourceWalletId || !sourceWalletId.startsWith('0x')) {
+            throw new Error('Invalid source wallet object ID');
+        }
         if (!destWalletId || !destWalletId.startsWith('0x')) {
-            throw new Error('Invalid recipient wallet address');
+            throw new Error('Invalid destination wallet object ID');
+        }
+        if (!recipientAddress || !recipientAddress.startsWith('0x')) {
+            throw new Error('Recipient address is required');
         }
         if (!amount || amount <= 0) {
             throw new Error('Invalid transfer amount');
         }
 
-
-        // Fetch Wallet object IDs
-        // const sourceWalletId = await getWalletObjectId(senderAddress);
-        // const destWalletObjectId = await getWalletObjectId(destWalletId);
-
-        // Use hardcoded Wallet object IDs from environment variables
-        const sourceWalletId = SENDER_WALLET_OBJECT_ID;
-        const destWalletObjectId = RECIPIENT_WALLET_OBJECT_ID;
-
-        if (!sourceWalletId) {
-            throw new Error(`Sender (${senderAddress}) does not have a Wallet object. A Wallet object is required to transfer funds.`);
+        // Convert amount to MIST if provided in SUI
+        let amountInMist = amount;
+        if (!Number.isInteger(amount)) {
+            console.log(`Converting amount ${amount} SUI to MIST`);
+            amountInMist = Math.floor(amount * 1_000_000_000); // Convert SUI to MIST
+            if (!Number.isSafeInteger(amountInMist)) {
+                throw new Error(`Amount ${amount} SUI results in unsafe integer ${amountInMist} MIST`);
+            }
         }
-        if (!destWalletObjectId) {
-            throw new Error(`Recipient (${destWalletId}) does not have a Wallet object. A Wallet object is required to transfer funds.`);
+        console.log(`Using amount: ${amountInMist} MIST`);
+
+        // Validate amount is an integer
+        if (!Number.isInteger(amountInMist)) {
+            throw new Error(`Amount must be an integer in MIST, got ${amountInMist}`);
         }
 
+        // Derive sender's keypair and address
+        const senderKeypair = getKeypairFromPrivateKey(senderPrivateKey);
+        const derivedSenderAddress = senderKeypair.getPublicKey().toSuiAddress();
+
+        // Hardcoded sender address for testing
+        const senderAddress = "0x52f03ac4ac477f9ec51f0e51b9a6d720a311e3a8c0c11cd8c2eeb9eb44d475e5";
+
+        // Validate hardcoded address matches derived address
+        if (senderAddress !== derivedSenderAddress) {
+            throw new Error('Hardcoded sender address does not match private key');
+        }
+
+        // Verify wallet object IDs
+        await verifyWalletObject(sourceWalletId, senderAddress);
+        await verifyWalletObject(destWalletId, recipientAddress);
+
+        // Check source wallet's balance
+        const walletBalance = await checkWalletBalance(sourceWalletId);
+        if (walletBalance < amountInMist) {
+            throw new Error(`Insufficient wallet balance: ${walletBalance} MIST available, ${amountInMist} MIST required`);
+        }
+
+        // Check sender's address balance for gas
+        const addressBalance = await checkBalance(senderAddress);
+        console.log(`Sender address balance: ${addressBalance} MIST`);
+        const gasCoins = await client.getCoins({
+            owner: senderAddress,
+            coinType: '0x2::sui::SUI',
+        });
+        const gasCoin = gasCoins.data.find((coin) => parseInt(coin.balance) >= FIXED_GAS_BUDGET);
+        if (!gasCoin) {
+            throw new Error(`No suitable gas coin found: ${addressBalance} MIST available, ${FIXED_GAS_BUDGET} MIST required`);
+        }
+        console.log(`Using gas coin ${gasCoin.coinObjectId} with balance ${gasCoin.balance} MIST`);
+
+
+
+        // Build transaction
         const txb = new TransactionBlock();
+        txb.setSender(senderAddress);
         txb.moveCall({
             target: `${PACKAGE_ID}::${MODULE_NAME}::transfer_to_wallet`,
             arguments: [
                 txb.object(sourceWalletId),
-                txb.object(destWalletObjectId),
-                txb.pure.u64(amount),
+                txb.object(destWalletId),
+                txb.pure.u64(amountInMist),
             ],
         });
 
+        // Set gas coin explicitly
+        txb.setGasPayment([{ objectId: gasCoin.coinObjectId, version: gasCoin.version, digest: gasCoin.digest }]);
+        txb.setGasBudget(FIXED_GAS_BUDGET);
 
-        // Perform dry run to estimate gas
-        const dryRunResult = await client.dryRunTransactionBlock({
-            transactionBlock: await txb.build({ client }),
-        });
-        if (dryRunResult.effects.status.status !== 'success') {
-            throw new Error(`Dry run failed: ${dryRunResult.effects.status.error || 'Unknown error'}`);
-        }
-        // Calculate total gas cost (computation + storage) with a 20% buffer
-        const gasUsed = dryRunResult.effects.gasUsed;
-        const gasBudget = Math.floor(
-            (gasUsed.computationCost + gasUsed.storageCost) * 1.2
-        );
-        // Check balance
-        const balance = await checkBalance(senderAddress);
-        if (balance < amount + gasBudget) {
-            throw new Error(`Insufficient balance for transfer (${amount} MIST) and gas (${gasBudget} MIST)`);
-        }
-        // Set gas budget on the TransactionBlock
-        txb.setGasBudget(gasBudget);
-
-
+        // Execute transaction
+        console.log(`Transferring ${amountInMist} MIST from wallet ${sourceWalletId} to wallet ${destWalletId}...`);
         const result = await executeTransaction(txb, senderKeypair);
         return {
             success: true,
@@ -161,8 +218,7 @@ export async function transferToWallet({ senderPrivateKey, destWalletId, amount 
     }
 }
 
-
-export function getSenderAddress(senderPrivateKey) {
+export async function getSenderAddress(senderPrivateKey) {
     try {
         const keypair = getKeypairFromPrivateKey(senderPrivateKey);
         return keypair.getPublicKey().toSuiAddress();
@@ -171,3 +227,4 @@ export function getSenderAddress(senderPrivateKey) {
         throw new Error('Invalid private key');
     }
 }
+
