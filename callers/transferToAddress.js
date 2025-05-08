@@ -1,13 +1,11 @@
-import { Transaction } from '@mysten/sui/transactions';
+import { TransactionBlock } from '@mysten/sui.js/transactions';
 import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
 import { client } from '../suiClient.js';
 
 const PACKAGE_ID = process.env.PACKAGE_ID;
 const MODULE_NAME = process.env.MODULE_NAME;
-
-// Replace this with your actual testnet wallet's private key for testing
 const SENDER_PRIVATE_KEY = process.env.PRIVATE_KEY;
-
+const FIXED_GAS_BUDGET = 100_000_000; // 0.1 SUI in MIST
 
 function getKeypairFromPrivateKey(hexKey) {
     if (!hexKey) {
@@ -37,14 +35,18 @@ function getKeypairFromPrivateKey(hexKey) {
 
 async function executeTransaction(txb, keypair) {
     try {
-        const result = await client.signAndExecuteTransaction({
-            transaction: txb,
+        const result = await client.signAndExecuteTransactionBlock({
+            transactionBlock: txb,
             signer: keypair,
+            options: {
+                showEffects: true,
+                showEvents: true,
+                showObjects: true,
+            },
         });
         return result;
     } catch (error) {
-        console.error('Transaction failed:', error);
-        throw error;
+        throw new Error(`Transaction execution failed: ${error.message}`);
     }
 }
 
@@ -53,20 +55,22 @@ async function checkBalance(walletAddress) {
         const balance = await client.getBalance({ owner: walletAddress });
         return parseInt(balance.totalBalance); // Balance in MIST
     } catch (error) {
-        console.error('Failed to check balance:', error);
-        throw error;
+        throw new Error(`Failed to check balance: ${error.message}`);
     }
 }
 
-
 export async function transferToAddress({
-       senderPrivateKey = SENDER_PRIVATE_KEY,
-       recipientAddress = '0xb7cd2f1248678984499a78ee51e14a01d1a9efe4d23f11469c3c29a11e4fdf6f',
-       amount = 40_000,
-   }) {
+        senderPrivateKey = SENDER_PRIVATE_KEY,
+        recipientAddress = '0x28b7cefa1e46d3e6d695a0f465b72033279e076bb7240c7715ec5950e9004e08',
+        amount = 7_000_000,
+    }) {
     try {
         const senderKeypair = getKeypairFromPrivateKey(senderPrivateKey);
         const senderAddress = senderKeypair.getPublicKey().toSuiAddress();
+
+        console.log(`Sender address: ${senderAddress}`);
+        console.log(`Recipient address: ${recipientAddress}`);
+        console.log(`Transfer amount: ${amount} MIST`);
 
         if (!recipientAddress || !recipientAddress.startsWith('0x')) {
             throw new Error('Invalid recipient wallet address');
@@ -76,22 +80,32 @@ export async function transferToAddress({
         }
 
         const balance = await checkBalance(senderAddress);
-        const gasEstimate = 1_000_000;
-        if (balance < amount + gasEstimate) {
-            throw new Error('Insufficient balance for transfer and gas');
+        console.log(`Sender total balance: ${balance} MIST`);
+        if (balance < amount + FIXED_GAS_BUDGET) {
+            throw new Error(`Insufficient balance for transfer (${amount} MIST) and gas (${FIXED_GAS_BUDGET} MIST)`);
         }
 
-        const txb = new Transaction();
+
+
+        const txb = new TransactionBlock();
+
+        // Call the move function with txb.gas directly
         txb.moveCall({
-            target: `${PACKAGE_ID}::${MODULE_NAME}::transfer_to_wallet`,
+            target: `${PACKAGE_ID}::${MODULE_NAME}::transfer_tothe_address`,
             arguments: [
-                txb.object(senderAddress),
-                txb.object(recipientAddress),
+                txb.gas,
+                txb.pure.address(recipientAddress),
                 txb.pure.u64(amount),
             ],
         });
 
+        // Set the gas budget
+        txb.setGasBudget(FIXED_GAS_BUDGET);
+
+        console.log('Transaction block prepared, executing...');
         const result = await executeTransaction(txb, senderKeypair);
+        console.log(`Transaction successful, digest: ${result.digest}`);
+
         return {
             success: true,
             transactionDigest: result.digest,
@@ -103,7 +117,6 @@ export async function transferToAddress({
     }
 }
 
-
 export function getSenderAddress(senderPrivateKey = SENDER_PRIVATE_KEY) {
     try {
         const keypair = getKeypairFromPrivateKey(senderPrivateKey);
@@ -113,4 +126,3 @@ export function getSenderAddress(senderPrivateKey = SENDER_PRIVATE_KEY) {
         throw new Error('Invalid private key');
     }
 }
-

@@ -234,7 +234,7 @@ app.post('/api/transfer-to-wallet', async (req, res) => {
             sourceWalletId: "0x03355332cb05eb346e8b71de30c374726bb703f00c15582b598e11a01693009e",
             destWalletId: "0xb38b6ca8dd130ee6938a20a4cccbcb33c62c693c012eb3b2de951a5cf5006012",
             recipientAddress: "0x52f03ac4ac477f9ec51f0e51b9a6d720a311e3a8c0c11cd8c2eeb9eb44d475e5",
-            amount: 0.015 // Amount in MIST (0.00006 SUI)
+            amount: 0.007 // Amount in MIST (0.00006 SUI)
         };
 
         // Call transferToWallet with hardcoded parameters
@@ -292,10 +292,10 @@ app.post('/api/wallet-objects', async (req, res) => {
 app.post('/api/transfer-to-address', async (req, res) => {
     try {
         // Explicit values
-        const destWalletId = "0xb7cd2f1248678984499a78ee51e14a01d1a9efe4d23f11469c3c29a11e4fdf6f";
-        const amount = 0.00004; // 4_000_0000 in number format (underscore is just for readability in some languages)
+        const recipientAddress = "0x28b7cefa1e46d3e6d695a0f465b72033279e076bb7240c7715ec5950e9004e08";
+        const amount = 0.007; // Amount in SUI
 
-        if (!destWalletId || !destWalletId.startsWith('0x')) {
+        if (!recipientAddress || !recipientAddress.startsWith('0x')) {
             return res.status(400).json({
                 success: false,
                 error: 'Invalid or missing recipient wallet address'
@@ -313,14 +313,21 @@ app.post('/api/transfer-to-address', async (req, res) => {
 
         const result = await transferToAddress({
             senderPrivateKey: SENDER_PRIVATE_KEY,
-            destWalletId,
+            recipientAddress,
             amount: amountInMist
         });
 
-        res.json({
+        if (!result.success) {
+            return res.status(400).json({
+                success: false,
+                error: result.error || 'Transaction failed'
+            });
+        }
+
+        res.status(200).json({
             success: true,
             transactionDigest: result.transactionDigest,
-            messageForUser: `Successfully transferred ${amount} SUI to ${destWalletId}`
+            messageForUser: `Successfully transferred ${amount} SUI to ${recipientAddress}`
         });
     } catch (error) {
         console.error('Transfer error:', error);
