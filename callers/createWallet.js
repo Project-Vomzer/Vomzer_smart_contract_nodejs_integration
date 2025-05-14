@@ -49,6 +49,8 @@ export async function createWallet({
             throw new Error('PACKAGE_ID and MODULE_NAME must be set in .env');
         }
 
+
+
         // Create a transaction to call the create_wallet function
         const txb = new TransactionBlock();
         txb.moveCall({
