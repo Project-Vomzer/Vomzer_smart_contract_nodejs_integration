@@ -3,8 +3,15 @@
   "version": "1.1.0",
   "type": "module",
   "private": true,
+  "main": "server.js",
+  "keywords": [],
+  "author": "Adetayo Bravo Jemi",
+  "license": "ISC",
+  "description": "",
+
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
   },
   "dependencies": {
     "@mysten/sui": "^1.29.0",
@@ -18,9 +25,17 @@
     "morgan": "~1.9.1",
     "pug": "2.0.0-beta11"
   },
-  "main": "server.js",
-  "keywords": [],
-  "author": "Adetayo Bravo Jemi",
-  "license": "ISC",
-  "description": ""
+
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "@types/jest": "^29.5.12",
+    "@jest/globals": "^29.7.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": ["**/__tests__/**/*.test.js"],
+    "verbose": true,
+    "transform": {}
+  }
+
 }

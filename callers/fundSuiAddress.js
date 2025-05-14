@@ -2,67 +2,55 @@ import { TransactionBlock } from '@mysten/sui.js/transactions';
 import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
 import { client } from '../suiClient.js';
 
-// Replace this with your actual testnet wallet's private key for testing
-const SENDER_PRIVATE_KEY = process.env.PRIVATE_KEY;
+const PRIVATE_KEY = process.env.PRIVATE_KEY;
 
 
-function getKeypairFromPrivateKey(hexKey) {
-    if (!hexKey) {
-        throw new Error('Private key is required');
-    }
-    let privateKey = hexKey.startsWith('0x') ? hexKey.slice(2) : hexKey;
-
-    if (privateKey.length !== 64) {
-        throw new Error(`Invalid private key length: ${privateKey.length} characters (expected 64)`);
-    }
-
-    let secretKey;
-    try {
-        secretKey = Buffer.from(privateKey, 'hex');
-    } catch (error) {
-        throw new Error(`Invalid hex string in private key: ${error.message}`);
-    }
-    if (secretKey.length !== 32) {
-        throw new Error(`Invalid private key byte length: ${secretKey.length} bytes (expected 32)`);
-    }
-    try {
-        return Ed25519Keypair.fromSecretKey(secretKey);
-    } catch (error) {
-        throw new Error(`Failed to derive keypair: ${error.message}`);
-    }
-}
-
-
-// Native SUI transfer
 export async function fundSuiAddress({
-         senderPrivateKey = SENDER_PRIVATE_KEY,
+         senderPrivateKey = PRIVATE_KEY,
          recipientWalletId,
-         amount = 6_000_000, // Amount in MIST 0.006 SUI)
-        }) {
+         amount,
+     }) {
     try {
+        // Validate inputs
         if (!senderPrivateKey) {
-            throw new Error('senderPrivateKey is required');
+            throw new Error('Sender private key is required');
         }
-        if (!recipientWalletId || !recipientWalletId.startsWith('0x')) {
-            throw new Error('Invalid recipient wallet address');
+        if (!recipientWalletId || !recipientWalletId.match(/^0x[0-9a-fA-F]{64}$/)) {
+            throw new Error('Invalid recipient wallet address: must be a 66-character hex string starting with 0x');
         }
-        if (!amount || amount <= 0) {
-            throw new Error('Invalid transfer amount');
+        if (typeof amount !== 'number' || isNaN(amount) || amount <= 0) {
+            throw new Error('Invalid amount: must be a positive number');
         }
 
+        // Convert amount from SUI to MIST
+        const amountInMist = Math.floor(amount * 1_000_000_000);
+        if (amountInMist < 1_000_000) {
+            throw new Error(`Amount too small: ${amount} SUI is ${amountInMist} MIST, minimum 0.001 SUI`);
+        }
+
+        // Derive sender keypair
         const senderKeypair = getKeypairFromPrivateKey(senderPrivateKey);
-        const derivedSenderAddress = senderKeypair.getPublicKey().toSuiAddress();
-        const senderAddress = "0x52f03ac4ac477f9ec51f0e51b9a6d720a311e3a8c0c11cd8c2eeb9eb44d475e5";
+        const senderAddress = senderKeypair.getPublicKey().toSuiAddress();
 
-        if (senderAddress && senderAddress !== derivedSenderAddress) {
-            throw new Error('Provided sender address does not match derived address');
+        // Check sender balance
+        const balance = await client.getBalance({ owner: senderAddress });
+        const totalBalance = parseInt(balance.totalBalance);
+        const gasBudget = 100_000_000; // 0.1 SUI in MIST
+        if (totalBalance < amountInMist + gasBudget) {
+            throw new Error(`Insufficient balance: ${totalBalance} MIST, needed ${amountInMist + gasBudget} MIST`);
         }
-        console.log(`Funding ${amount} MIST to ${recipientWalletId} from ${derivedSenderAddress}`);
 
+        console.log(`Funding ${amount} SUI (${amountInMist} MIST) to ${recipientWalletId} from ${senderAddress}`);
+
+
+
+        // Create transaction
         const txb = new TransactionBlock();
-        const [coin] = txb.splitCoins(txb.gas, [amount]);
+        const [coin] = txb.splitCoins(txb.gas, [amountInMist]);
         txb.transferObjects([coin], recipientWalletId);
+        txb.setGasBudget(gasBudget);
 
+        // Sign and execute transaction
         const result = await client.signAndExecuteTransactionBlock({
             transactionBlock: txb,
             signer: senderKeypair,
@@ -70,14 +58,44 @@ export async function fundSuiAddress({
             options: { showEffects: true },
         });
 
+        // Check transaction status
+        if (result.effects?.status?.status !== 'success') {
+            throw new Error(`Transaction failed: ${result.effects?.status?.error || 'Unknown error'}`);
+        }
+
         return {
             success: true,
             transactionDigest: result.digest,
-            senderAddress: derivedSenderAddress,
-            message: `Successfully funded ${(amount / 1_000_000_000).toFixed(9)} SUI to ${recipientWalletId}`,
+            senderAddress,
+            amountInSui: amount,
+            amountInMist,
+            message: `Successfully funded ${amount} SUI to ${recipientWalletId}`,
         };
     } catch (error) {
-        console.error('Native SUI funding failed:', error);
-        return { success: false, error: `Funding failed: ${error.message}` };
+        console.error(`Failed to fund ${recipientWalletId}:`, error);
+        return {
+            success: false,
+            error: `Funding failed: ${error.message}`,
+        };
     }
 }
+
+
+function getKeypairFromPrivateKey(hexKey) {
+    let privateKey = hexKey.startsWith('0x') ? hexKey.slice(2) : hexKey;
+
+    if (privateKey.length !== 64 || !/^[0-9a-fA-F]+$/.test(privateKey)) {
+        throw new Error('Invalid private key: must be a 64-character hex string');
+    }
+
+    try {
+        const secretKey = Buffer.from(privateKey, 'hex');
+        if (secretKey.length !== 32) {
+            throw new Error(`Invalid private key byte length: ${secretKey.length} bytes (expected 32)`);
+        }
+        return Ed25519Keypair.fromSecretKey(secretKey);
+    } catch (error) {
+        throw new Error(`Failed to derive keypair: ${error.message}`);
+    }
+}
+

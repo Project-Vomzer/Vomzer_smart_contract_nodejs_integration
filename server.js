@@ -1,6 +1,7 @@
 import express from 'express';
 import morgan from 'morgan';
-import { createSuiAddress } from './callers/createSuiAddress.js';
+import { createSuiAddressOffChain } from './callers/createSuiAddressOffChain.js';
+import { createSuiAddressOnChain } from './callers/createSuiAddressOnChain.js';
 import { createWallet } from './callers/createWallet.js';
 import { fundSuiAddress } from './callers/fundSuiAddress.js';
 import { transferToWallet} from './callers/transferToWallet.js';
@@ -24,15 +25,15 @@ console.log('Starting Vomzer Socials Node.js Integration server...');
 
 
 // Endpoint to create a new wallet
-app.post('/api/create-sui-address', (req, res) => {
+app.post('/api/create-sui-address-off-chain', (req, res) => {
     try {
-        console.log('Received POST /api/create-wallet:', {
+        console.log('Received POST /api/create-sui-address_off-chain', {
             body: req.body,
             headers: req.headers,
         });
 
         // Call createSuiAddress and validate result
-        const result = createSuiAddress();
+        const result = createSuiAddressOffChain();
         if (!result || !result.walletAddress || !result.privateKey) {
             throw new Error('Invalid response from createSuiAddress: missing walletAddress or privateKey');
         }
@@ -46,7 +47,7 @@ app.post('/api/create-sui-address', (req, res) => {
             messageForUser: 'Wallet created off-chain. Fund it with SUI tokens to use it on-chain.',
         });
     } catch (error) {
-        console.error('Error in /api/create-wallet:', {
+        console.error('Error in /api/create-sui-address-off-chain', {
             message: error.message,
             stack: error.stack,
         });
@@ -60,95 +61,78 @@ app.post('/api/create-sui-address', (req, res) => {
 
 
 
-// Endpoint to Fund a wallet with SUI
+//End point to create sui address on chain
+app.post('/api/create-sui-address-on-chain', async (req, res) => {
+    try {
+        console.log('Creating Sui address on-chain...');
+        const result = await createSuiAddressOnChain();
+
+        if (!result.success) {
+            return res.status(400).json(result);
+        }
+
+        res.status(200).json({
+            success: true,
+            walletObjectId: result.walletObjectId,
+            walletAddress: result.walletAddress,
+            privateKey: result.privateKey,
+            transactionDigest: result.transactionDigest,
+            senderAddress: result.senderAddress,
+            messageForUser: 'Wallet created on-chain with new address as owner. Fund it with SUI tokens to use it further.',
+        });
+    } catch (error) {
+        console.error('Error in /api/create-sui-address-on-chain', error);
+        res.status(500).json({ success: false, error: `Server error: ${error.message}` });
+    }
+});
+
+
+
+// Endpoint to Fund a Sui address
 app.post('/api/fund-sui-address', async (req, res) => {
     try {
-        // Explicit values
-        const recipientWalletId = "0xb7cd2f1248678984499a78ee51e14a01d1a9efe4d23f11469c3c29a11e4fdf6f";
-        const amount = 0.006; // 6_000_000 in number format (underscore is just for readability in some languages)
+        const { senderPrivateKey, recipientWalletId, amount } = req.body;
 
-        if (!recipientWalletId || !recipientWalletId.startsWith('0x')) {
+        // Validate inputs
+        if (!recipientWalletId || !recipientWalletId.match(/^0x[0-9a-fA-F]{64}$/)) {
             return res.status(400).json({
                 success: false,
-                error: 'Invalid or missing recipient wallet address'
+                error: 'Invalid or missing recipient wallet address: must be a 66-character hex string starting with 0x',
             });
         }
-        if (!amount || isNaN(amount) || amount <= 0) {
+        if (typeof amount !== 'number' || isNaN(amount) || amount <= 0) {
             return res.status(400).json({
                 success: false,
-                error: 'Invalid or missing amount'
-            });
-        }
-        if (!SENDER_PRIVATE_KEY) {
-            return res.status(400).json({
-                success: false,
-                error: 'Sender private key not provided'
+                error: 'Invalid or missing amount: must be a positive number in SUI',
             });
         }
 
-        let privateKey = SENDER_PRIVATE_KEY;
-        if (privateKey.startsWith('0x')) {
-            privateKey = privateKey.slice(2);
-        }
-        if (privateKey.length !== 64) {
-            return res.status(400).json({
-                success: false,
-                error: `Invalid private key length: ${privateKey.length} characters (expected 64)`
-            });
-        }
+        console.log(`Processing fund request: ${amount} SUI to ${recipientWalletId}`);
 
-        let privateKeyBytes;
-        try {
-            privateKeyBytes = Buffer.from(privateKey, 'hex');
-        } catch (error) {
-            return res.status(400).json({
-                success: false,
-                error: `Invalid hex string in private key: ${error.message}`
-            });
-        }
-        if (privateKeyBytes.length !== 32) {
-            return res.status(400).json({
-                success: false,
-                error: `Invalid private key byte length: ${privateKeyBytes.length} bytes (expected 32)`
-            });
-        }
-
-        let senderAddress;
-        try {
-            const keypair = Ed25519Keypair.fromSecretKey(privateKeyBytes);
-            senderAddress = keypair.getPublicKey().toSuiAddress();
-            console.log(`Derived sender address: ${senderAddress}`);
-        } catch (error) {
-            return res.status(400).json({
-                success: false,
-                error: `Failed to derive sender address: ${error.message}`
-            });
-        }
-
-        // Convert amount from SUI to MIST (1 SUI = 10^9 MIST)
-        const amountInMist = Math.floor(parseFloat(amount) * 1_000_000_000);
-
+        // Call fundSuiAddress
         const result = await fundSuiAddress({
-            SENDER_PRIVATE_KEY: privateKeyBytes, // Pass bytes directly
-            senderAddress,
+            senderPrivateKey,
             recipientWalletId,
-            amount: amountInMist
+            amount,
         });
 
         if (!result.success) {
-            return res.status(500).json(result);
+            return res.status(400).json(result);
         }
 
-        res.json({
+        res.status(200).json({
             success: true,
             transactionDigest: result.transactionDigest,
-            message: `Successfully funded ${amount} SUI from ${senderAddress} to ${recipientWalletId}`
+            senderAddress: result.senderAddress,
+            amountInSui: result.amountInSui,
+            amountInMist: result.amountInMist,
+            message: result.message,
         });
     } catch (error) {
-        console.error('Funding error:', error);
+        console.error('Error in /api/fund-sui-address:', error);
         res.status(500).json({
             success: false,
-            error: `Funding failed: ${error.message}`
+            error: `Funding failed: ${error.message}`,
         });
     }
 });
