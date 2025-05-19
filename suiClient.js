@@ -3,6 +3,7 @@ import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
 import { fromHex } from '@mysten/sui/utils';
 import { SuiClient, getFullnodeUrl } from '@mysten/sui.js/client';
 import * as dotenv from 'dotenv';
+import app from './app';
 
 dotenv.config();
 

@@ -105,7 +105,7 @@ app.post('/api/fund-wallet', async (req, res) => {
 
         if (!result.success) {
             return res.status(500).json(result);
-        }
+            }
 
         res.json({
             success: true,
