@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Google OAuth Test</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+<div id="g_id_onload"
+     data-client_id="YOUR_GOOGLE_CLIENT_ID"
+     data-callback="handleCredentialResponse">
+</div>
+<script>
+    function handleCredentialResponse(response) {
+        console.log('JWT:', response.credential);
+        // Send to your backend
+        fetch('http://localhost:3001/generate-wallet', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                jwt: response.credential,
+                zkProof: { address: 'mock-user-id-123' }, // Mock zkProof for now
+                username: 'testuser'
+            })
+        })
+            .then(res => res.json())
+            .then(data => console.log('Response:', data))
+            .catch(err => console.error('Error:', err));
+    }
+</script>
+</body>
+</html>

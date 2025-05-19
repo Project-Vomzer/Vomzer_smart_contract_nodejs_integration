@@ -11,6 +11,11 @@ import { expendReward } from './callers/expendReward.js';
 import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
 
 
+
+import jwt from 'jsonwebtoken';
+import { verifyZkLoginProof } from '@mysten/sui.js/zklogin';
+import fetch from 'node-fetch'; // For fetching Google's JWKS
+
 const app = express();
 app.use(express.json());
 
@@ -21,6 +26,115 @@ app.use(express.json()); // Parse JSON request bodies
 
 // Log server startup
 console.log('Starting Vomzer Socials Node.js Integration server...');
+
+
+
+// Function to fetch Google's JWKS for JWT verification
+async function getGooglePublicKey(kid) {
+    const response = await fetch('https://www.googleapis.com/oauth2/v3/certs');
+    const jwks = await response.json();
+    const key = jwks.keys.find(k => k.kid === kid);
+    if (!key) {
+        throw new Error('Public key not found for provided kid');
+    }
+    // Convert JWK to PEM format (simplified, use a library like 'jwk-to-pem' in production)
+    return key;
+}
+
+
+// Endpoint to handle wallet generation with JWT and zk-proof verification
+app.post('/generate-wallet', async (req, res) => {
+    try {
+        const { jwt: jwtToken, zkProof, username } = req.body;
+
+        // Validate request body
+        if (!jwtToken || !zkProof || !username) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields: jwt, zkProof, or username'
+            });
+        }
+
+        // Step 1: Verify Google OAuth JWT
+        let decodedJwt;
+        try {
+            // Decode JWT to get header for kid
+            const decodedHeader = jwt.decode(jwtToken, { complete: true });
+            if (!decodedHeader || !decodedHeader.header.kid) {
+                throw new Error('Invalid JWT header or missing kid');
+            }
+
+            // Fetch Google's public key for the kid
+            const publicKey = await getGooglePublicKey(decodedHeader.header.kid);
+
+            // Verify JWT
+            decodedJwt = jwt.verify(jwtToken, publicKey, {
+                issuer: 'https://accounts.google.com',
+                audience: process.env.GOOGLE_CLIENT_ID
+            });
+
+            if (!decodedJwt.email || !decodedJwt.sub) {
+                throw new Error('JWT missing required claims: email or sub');
+            }
+        } catch (error) {
+            console.error('JWT verification failed:', error);
+            return res.status(401).json({
+                success: false,
+                error: `JWT verification failed: ${error.message}`
+            });
+        }
+
+        // Step 2: Verify zk-proof using @mysten/sui.js/zklogin
+        try {
+            const zkProofInputs = zkProof; // Assuming zkProof is the serialized ZkLoginSignatureInputs
+            const isValidProof = await verifyZkLoginProof(zkProofInputs);
+
+            if (!isValidProof) {
+                throw new Error('Invalid zk-proof');
+            }
+
+            // Verify that the zk-proof corresponds to the JWT's sub (user ID)
+            const expectedAddress = decodedJwt.sub; // Adjust based on how address is derived in your zkLogin setup
+            if (zkProofInputs.address !== expectedAddress) {
+                throw new Error('zk-proof address does not match JWT user ID');
+            }
+        } catch (error) {
+            console.error('zk-proof verification failed:', error);
+            return res.status(400).json({
+                success: false,
+                error: `zk-proof verification failed: ${error.message}`
+            });
+        }
+
+        // Step 3: Proceed to create the wallet
+        console.log(`Creating wallet for user: ${username}, email: ${decodedJwt.email}`);
+        const result = await createSuiAddressOnChain();
+
+        if (!result.success) {
+            return res.status(500).json({
+                success: false,
+                error: result.error || 'Failed to create wallet'
+            });
+        }
+
+        // Return wallet details
+        res.status(200).json({
+            success: true,
+            walletObjectId: result.walletObjectId,
+            walletAddress: result.walletAddress,
+            privateKey: result.privateKey,
+            transactionDigest: result.transactionDigest,
+            senderAddress: result.senderAddress,
+            messageForUser: `Wallet created for ${username}`
+        });
+    } catch (error) {
+        console.error('Error in /generate-wallet:', error);
+        res.status(500).json({
+            success: false,
+            error: `Server error: ${error.message}`
+        });
+    }
+});
 
 
 
