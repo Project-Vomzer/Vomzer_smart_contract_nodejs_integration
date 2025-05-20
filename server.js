@@ -4,27 +4,124 @@ import { createSuiAddressOffChain } from './callers/createSuiAddressOffChain.js'
 import { createSuiAddressOnChain } from './callers/createSuiAddressOnChain.js';
 import { createWallet } from './callers/createWallet.js';
 import { fundSuiAddress } from './callers/fundSuiAddress.js';
-import { transferToWallet} from './callers/transferToWallet.js';
+import { transferToWallet } from './callers/transferToWallet.js';
 import { depositToWallet } from './callers/depositToWallet.js';
 import { transferToAddress } from './callers/transferToAddress.js';
 import { expendReward } from './callers/expendReward.js';
 import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
-
+import { OAuth2Client } from 'google-auth-library';
+import cors from 'cors'; // Add this line
+import crypto from 'crypto'; // Correct import for crypto module
 
 const app = express();
 app.use(express.json());
 
 const SENDER_PRIVATE_KEY = process.env.PRIVATE_KEY;
+const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const client = new OAuth2Client(CLIENT_ID);
 
-app.use(morgan('dev')); // Logs requests in 'dev' format (method, URL, status, response time)
-app.use(express.json()); // Parse JSON request bodies
+if (!CLIENT_ID) {
+    throw new Error('GOOGLE_CLIENT_ID must be set in .env');
+}
 
-// Log server startup
+app.use(cors({ origin: ['http://127.0.0.1:8080', 'http://localhost:8080'] }));
+app.use(express.json()); // If not already present, to parse JSON bodies
+app.use(morgan('dev'));
+
 console.log('Starting Vomzer Socials Node.js Integration server...');
 
 
 
-// Endpoint to create a new wallet
+function deriveZkLoginAddress(sub, iss) {
+    return '0x' + crypto.createHash('sha256').update(sub + iss).digest('hex').slice(0, 64);
+}
+
+app.post('/generate-wallet', async (req, res) => {
+    const { jwt, username } = req.body;
+
+    if (!jwt || !username) {
+        return res.status(400).json({
+            success: false,
+            error: 'Missing required fields: jwt or username'
+        });
+    }
+
+    try {
+        const ticket = await client.verifyIdToken({
+            idToken: jwt,
+            audience: CLIENT_ID,
+        });
+        const payload = ticket.getPayload();
+
+        const sub = payload['sub'];
+        const iss = payload['iss'];
+
+        if (!sub || !iss) {
+            throw new Error('Invalid JWT payload');
+        }
+
+        const derivedAddress = deriveZkLoginAddress(sub, iss);
+        const result = await createSuiAddressOnChain(derivedAddress);
+
+        if (!result.success) {
+            return res.status(500).json({
+                success: false,
+                error: result.error || 'Failed to create wallet'
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            walletObjectId: result.walletObjectId,
+            walletAddress: result.walletAddress,
+            transactionDigest: result.transactionDigest,
+            senderAddress: result.senderAddress,
+            messageForUser: `Wallet created for ${username} with address ${derivedAddress}`
+        });
+    } catch (error) {
+        console.error('Error in /generate-wallet:', error);
+        res.status(500).json({
+            success: false,
+            error: `Server error: ${error.message}`
+        });
+    }
+});
+
+app.post('/login', async (req, res) => {
+    const { username, jwt } = req.body;
+
+    if (!username || !jwt) {
+        return res.status(400).json({ error: 'Missing username or JWT' });
+    }
+
+    try {
+        const ticket = await client.verifyIdToken({
+            idToken: jwt,
+            audience: CLIENT_ID,
+        });
+        const payload = ticket.getPayload();
+
+        const sub = payload['sub'];
+        const iss = payload['iss'];
+
+        if (!sub || !iss) {
+            return res.status(400).json({ error: 'Invalid JWT payload' });
+        }
+
+        const suiAddress = deriveZkLoginAddress(sub, iss);
+
+        res.json({
+            username,
+            suiAddress,
+        });
+    } catch (error) {
+        console.error('Login error:', error.message);
+        return res.status(401).json({ error: 'JWT verification failed' });
+    }
+});
+
+
+// Existing endpoint: create off-chain address
 app.post('/api/create-sui-address-off-chain', (req, res) => {
     try {
         console.log('Received POST /api/create-sui-address_off-chain', {
@@ -32,7 +129,6 @@ app.post('/api/create-sui-address-off-chain', (req, res) => {
             headers: req.headers,
         });
 
-        // Call createSuiAddress and validate result
         const result = createSuiAddressOffChain();
         if (!result || !result.walletAddress || !result.privateKey) {
             throw new Error('Invalid response from createSuiAddress: missing walletAddress or privateKey');
@@ -54,18 +150,17 @@ app.post('/api/create-sui-address-off-chain', (req, res) => {
         res.status(500).json({
             success: false,
             error: error.message,
-            requestId: req.headers['x-request-id'] || 'unknown', // Include for tracing
+            requestId: req.headers['x-request-id'] || 'unknown',
         });
     }
 });
 
 
-
-//End point to create sui address on chain
+// Existing endpoint: create on-chain address (still available but not used with zkLogin)
 app.post('/api/create-sui-address-on-chain', async (req, res) => {
     try {
         console.log('Creating Sui address on-chain...');
-        const result = await createSuiAddressOnChain();
+        const result = await createSuiAddressOnChain(req.body.derivedAddress); // Optionally accept derivedAddress
 
         if (!result.success) {
             return res.status(400).json(result);
@@ -75,10 +170,9 @@ app.post('/api/create-sui-address-on-chain', async (req, res) => {
             success: true,
             walletObjectId: result.walletObjectId,
             walletAddress: result.walletAddress,
-            privateKey: result.privateKey,
             transactionDigest: result.transactionDigest,
             senderAddress: result.senderAddress,
-            messageForUser: 'Wallet created on-chain with new address as owner. Fund it with SUI tokens to use it further.',
+            messageForUser: 'Wallet created on-chain with provided address as owner.',
         });
     } catch (error) {
         console.error('Error in /api/create-sui-address-on-chain', error);
@@ -87,13 +181,11 @@ app.post('/api/create-sui-address-on-chain', async (req, res) => {
 });
 
 
-
-// Endpoint to Fund a Sui address
+// Existing endpoint: fund Sui address
 app.post('/api/fund-sui-address', async (req, res) => {
     try {
         const { senderPrivateKey, recipientWalletId, amount } = req.body;
 
-        // Validate inputs
         if (!recipientWalletId || !recipientWalletId.match(/^0x[0-9a-fA-F]{64}$/)) {
             return res.status(400).json({
                 success: false,
@@ -109,7 +201,6 @@ app.post('/api/fund-sui-address', async (req, res) => {
 
         console.log(`Processing fund request: ${amount} SUI to ${recipientWalletId}`);
 
-        // Call fundSuiAddress
         const result = await fundSuiAddress({
             senderPrivateKey,
             recipientWalletId,
@@ -138,8 +229,7 @@ app.post('/api/fund-sui-address', async (req, res) => {
 });
 
 
-
-// Endpoint to create a Wallet object
+// Existing endpoint: create wallet
 app.post('/api/create-wallet', async (req, res) => {
     try {
         const { address, privateKey } = req.body || {};
@@ -173,17 +263,15 @@ app.post('/api/create-wallet', async (req, res) => {
 });
 
 
-
+// Existing endpoint: deposit to wallet
 app.post('/api/deposit-to-wallet', async (req, res) => {
     try {
-        // Hardcoded parameters for testing
         const depositParams = {
             senderPrivateKey: process.env.PRIVATE_KEY,
             walletId: "0x03355332cb05eb346e8b71de30c374726bb703f00c15582b598e11a01693009e",
-            amountInMist: 30_000_000 // 0.0001 SUI
+            amountInMist: 30_000_000
         };
 
-        // Call depositToWallet with hardcoded parameters
         const result = await depositToWallet(depositParams);
 
         if (result.success) {
@@ -208,20 +296,17 @@ app.post('/api/deposit-to-wallet', async (req, res) => {
 });
 
 
-
-// Endpoint to transfer SUI to a wallet
+// Existing endpoint: transfer to wallet
 app.post('/api/transfer-to-wallet', async (req, res) => {
     try {
-        // Hardcoded parameters for testing
         const transferParams = {
             senderPrivateKey: process.env.PRIVATE_KEY,
             sourceWalletId: "0x03355332cb05eb346e8b71de30c374726bb703f00c15582b598e11a01693009e",
             destWalletId: "0xb38b6ca8dd130ee6938a20a4cccbcb33c62c693c012eb3b2de951a5cf5006012",
             recipientAddress: "0x52f03ac4ac477f9ec51f0e51b9a6d720a311e3a8c0c11cd8c2eeb9eb44d475e5",
-            amount: 0.007 // Amount in MIST (0.00006 SUI)
+            amount: 0.007
         };
 
-        // Call transferToWallet with hardcoded parameters
         const result = await transferToWallet(transferParams);
 
         if (result.success) {
@@ -245,39 +330,12 @@ app.post('/api/transfer-to-wallet', async (req, res) => {
     }
 });
 
-// API endpoint to fetch available wallet objects for an address
-app.post('/api/wallet-objects', async (req, res) => {
-    try {
-        const { address } = req.body;
-        if (!address || !address.startsWith('0x')) {
-            return res.status(400).json({
-                success: false,
-                error: 'Valid Sui address is required'
-            });
-        }
 
-        const walletObjects = await getAvailableWalletObjects(address);
-        res.status(200).json({
-            success: true,
-            walletObjects
-        });
-    } catch (error) {
-        console.error('Wallet objects API error:', error.stack);
-        res.status(500).json({
-            success: false,
-            error: `Server error: ${error.message}`
-        });
-    }
-});
-
-
-
-// Endpoint to transfer SUI to an address
+// Existing endpoint: transfer to address
 app.post('/api/transfer-to-address', async (req, res) => {
     try {
-        // Explicit values
         const recipientAddress = "0x28b7cefa1e46d3e6d695a0f465b72033279e076bb7240c7715ec5950e9004e08";
-        const amount = 0.007; // Amount in SUI
+        const amount = 0.007;
 
         if (!recipientAddress || !recipientAddress.startsWith('0x')) {
             return res.status(400).json({
@@ -292,7 +350,6 @@ app.post('/api/transfer-to-address', async (req, res) => {
             });
         }
 
-        // Convert amount from SUI to MIST (1 SUI = 10^9 MIST)
         const amountInMist = Math.floor(parseFloat(amount) * 1_000_000_000);
 
         const result = await transferToAddress({
@@ -323,11 +380,9 @@ app.post('/api/transfer-to-address', async (req, res) => {
 });
 
 
-
-// Endpoint to Disburse SUI to a wallet
+// Existing endpoint: expend reward
 app.post('/api/expend-reward', async (req, res) => {
     try {
-        // Explicit values
         const recipientWalletId = "0xb7cd2f1248678984499a78ee51e14a01d1a9efe4d23f11469c3c29a11e4fdf6f";
         const amount = 0.012;
 
@@ -389,7 +444,6 @@ app.post('/api/expend-reward', async (req, res) => {
             });
         }
 
-        // Convert amount from SUI to MIST (1 SUI = 10^9 MIST)
         const amountInMist = Math.floor(parseFloat(amount) * 1_000_000_000);
 
         const result = await expendReward({
@@ -419,14 +473,12 @@ app.post('/api/expend-reward', async (req, res) => {
 
 
 
-//Use the PORT in .env
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
 
 
-// Global error handling middleware
 app.use((err, req, res, next) => {
     console.error('Unhandled error:', {
         message: err.message,
@@ -440,4 +492,5 @@ app.use((err, req, res, next) => {
         requestId: req.headers['x-request-id'] || 'unknown',
     });
 });
+
 
