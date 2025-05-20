@@ -36,7 +36,7 @@ function deriveZkLoginAddress(sub, iss) {
     return '0x' + crypto.createHash('sha256').update(sub + iss).digest('hex').slice(0, 64);
 }
 
-app.post('/generate-wallet', async (req, res) => {
+app.post('/api/generate-wallet', async (req, res) => {
     const { jwt, username } = req.body;
 
     if (!jwt || !username) {
@@ -87,7 +87,7 @@ app.post('/generate-wallet', async (req, res) => {
     }
 });
 
-app.post('/login', async (req, res) => {
+app.post('/api/login', async (req, res) => {
     const { username, jwt } = req.body;
 
     if (!username || !jwt) {
