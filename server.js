@@ -24,9 +24,15 @@ if (!CLIENT_ID) {
     throw new Error('GOOGLE_CLIENT_ID must be set in .env');
 }
 
+app.use('/frontend', express.static(path.join(__dirname, 'frontend')));
 app.use(cors({ origin: ['http://127.0.0.1:8080', 'http://localhost:8080'] }));
 app.use(express.json()); // If not already present, to parse JSON bodies
 app.use(morgan('dev'));
+
+app.use(cors({
+    origin: 'https://vomzersocialsnodejsintegration-production.up.railway.app',
+    credentials: true
+}));
 
 console.log('Starting Vomzer Socials Node.js Integration server...');
 
