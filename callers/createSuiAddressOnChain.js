@@ -1,6 +1,5 @@
 import { TransactionBlock } from '@mysten/sui.js/transactions';
 import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
-import { decodeSuiPrivateKey } from '@mysten/sui.js/cryptography';
 import { client } from '../suiClient.js';
 
 const PACKAGE_ID = process.env.PACKAGE_ID;
@@ -38,8 +37,7 @@ async function checkBalance(walletAddress) {
 }
 
 
-
-export async function createSuiAddressOnChain() {
+export async function createSuiAddressOnChain(derivedAddress) {
     let senderAddress = 'unknown address';
     try {
         if (!PRIVATE_KEY) {
@@ -48,54 +46,39 @@ export async function createSuiAddressOnChain() {
         if (!PACKAGE_ID || !MODULE_NAME) {
             throw new Error('PACKAGE_ID and MODULE_NAME must be set in .env');
         }
+        if (!derivedAddress || !derivedAddress.startsWith('0x')) {
+            throw new Error('Invalid or missing derivedAddress');
+        }
 
-        // Keypair for signing the transaction (funded account from .env)
         const signerKeypair = getKeypairFromPrivateKey(PRIVATE_KEY);
         senderAddress = signerKeypair.getPublicKey().toSuiAddress();
 
-        // Generate a new keypair for the wallet
-        const newKeypair = Ed25519Keypair.generate();
-        const newWalletAddress = newKeypair.getPublicKey().toSuiAddress();
-
-        // Convert the new private key to a 64-character hex string
-        const bech32PrivateKey = newKeypair.getSecretKey();
-        const { secretKey } = decodeSuiPrivateKey(bech32PrivateKey);
-        const newPrivateKeyHex = Buffer.from(secretKey).toString('hex');
-
         console.log(`Sender address (for gas): ${senderAddress}`);
-        console.log(`New wallet address: ${newWalletAddress}`);
+        console.log(`Derived zkLogin wallet address: ${derivedAddress}`);
 
-        // Check balance of the signer to ensure sufficient gas
         const balance = await checkBalance(senderAddress);
         console.log(`Sender total balance: ${balance} MIST`);
         if (balance < FIXED_GAS_BUDGET) {
             throw new Error(`Insufficient balance for gas (${FIXED_GAS_BUDGET} MIST). Current balance: ${balance} MIST`);
         }
 
-
-
-        // Create a transaction to call the create_address function
         const txb = new TransactionBlock();
         txb.moveCall({
             target: `${PACKAGE_ID}::${MODULE_NAME}::create_address`,
-            arguments: [txb.pure.address(newWalletAddress)], // Pass the new address
+            arguments: [txb.pure.address(derivedAddress)],
         });
-
         txb.setGasBudget(FIXED_GAS_BUDGET);
 
-        // Sign and execute the transaction with the signer's keypair
         const result = await client.signAndExecuteTransactionBlock({
             transactionBlock: txb,
             signer: signerKeypair,
             options: { showEffects: true, showEvents: true, showObjects: true },
         });
 
-        // Check transaction status
         if (result.effects?.status?.status !== 'success') {
             throw new Error(`Transaction failed: ${result.effects?.status?.error || 'Unknown error'}`);
         }
 
-        // Extract the created Wallet object ID
         const createdObject = result.effects?.created?.[0];
         const walletObjectId = createdObject?.reference?.objectId;
 
@@ -103,7 +86,6 @@ export async function createSuiAddressOnChain() {
             throw new Error('Failed to extract Wallet object ID from transaction effects');
         }
 
-        // Extract the WalletCreatedEvent to get the wallet_id and owner
         const walletEvent = result.events?.find(event =>
             event.type === `${PACKAGE_ID}::${MODULE_NAME}::WalletCreatedEvent`
         );
@@ -114,9 +96,8 @@ export async function createSuiAddressOnChain() {
             throw new Error('Failed to extract WalletCreatedEvent, wallet_id, or owner');
         }
 
-        // Verify the event owner matches the new keypair's address
-        if (eventOwner !== newWalletAddress) {
-            throw new Error(`On-chain owner (${eventOwner}) does not match the new keypair's address (${newWalletAddress})`);
+        if (eventOwner !== derivedAddress) {
+            throw new Error(`On-chain owner (${eventOwner}) does not match the derived address (${derivedAddress})`);
         }
 
         console.log(`Wallet created with object ID: ${walletObjectId}, address: ${walletAddress}, owner: ${eventOwner}`);
@@ -124,8 +105,7 @@ export async function createSuiAddressOnChain() {
         return {
             success: true,
             walletObjectId,
-            walletAddress,
-            privateKey: newPrivateKeyHex,
+            walletAddress: derivedAddress,
             transactionDigest: result.digest,
             senderAddress,
         };
