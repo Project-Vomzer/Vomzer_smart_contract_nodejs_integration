@@ -12,9 +12,12 @@ import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
 import { OAuth2Client } from 'google-auth-library';
 import cors from 'cors'; // Add this line
 import crypto from 'crypto';
-import * as path from "node:path"; // Correct import for crypto module
-const __dirname = path.dirname(__filename);
 
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const app = express();
 app.use(express.json());
 
