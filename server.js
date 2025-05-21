@@ -13,7 +13,6 @@ import { OAuth2Client } from 'google-auth-library';
 import cors from 'cors'; // Add this line
 import crypto from 'crypto';
 import * as path from "node:path"; // Correct import for crypto module
-const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
@@ -26,9 +25,9 @@ const client = new OAuth2Client(CLIENT_ID);
 if (!CLIENT_ID) {
     throw new Error('GOOGLE_CLIENT_ID must be set in .env');
 }
-    
+
 app.use('/frontend', express.static(path.join(__dirname, 'frontend')));
-app.use(cors({ origin: ['[invalid url, do not cite] '] }));
+app.use(cors({ origin: ['https://vomzersocialsnodejsintegration-production.up.railway.app', 'http://localhost:8080'] }));
 //app.use(cors({ origin: ['http://127.0.0.1:8080', 'http://localhost:8080'] }));
 app.use(express.json()); // If not already present, to parse JSON bodies
 app.use(morgan('dev'));
