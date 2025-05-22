@@ -1,5 +1,12 @@
 import express from 'express';
 import morgan from 'morgan';
+import cors from 'cors'; // Add this line
+import path from 'path';
+import { fileURLToPath } from 'url';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
 import { createSuiAddressOffChain } from './callers/createSuiAddressOffChain.js';
 import { createSuiAddressOnChain } from './callers/createSuiAddressOnChain.js';
 import { createWallet } from './callers/createWallet.js';
@@ -10,16 +17,30 @@ import { transferToAddress } from './callers/transferToAddress.js';
 import { expendReward } from './callers/expendReward.js';
 import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
 import { OAuth2Client } from 'google-auth-library';
-import cors from 'cors'; // Add this line
 import crypto from 'crypto';
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 
-import path from 'path';
-import { fileURLToPath } from 'url';
+const users = []; // Define the array here
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const app = express();
+// Middleware setup
+app.use(morgan('dev')); // Logging first
+app.use(cors({
+    origin: [
+        'http://localhost:3000',                // Add this line for your frontend
+        'http://localhost:3001',                 // Backend itself (if needed)
+        'http://127.0.0.1:8080',                // Frontend local (IP)
+        'http://localhost:8080',                // Frontend local (hostname)
+        'https://vomzersocialsnodejsintegration-production.up.railway.app' // Production
+    ],
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type'],
+    credentials: true,
+    optionsSuccessStatus: 204
+}));
+
 app.use(express.json());
+app.use('/frontend', express.static(path.join(__dirname, 'frontend')));
 
 const SENDER_PRIVATE_KEY = process.env.PRIVATE_KEY;
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
@@ -29,16 +50,14 @@ if (!CLIENT_ID) {
     throw new Error('GOOGLE_CLIENT_ID must be set in .env');
 }
 
-app.use('/frontend', express.static(path.join(__dirname, 'frontend')));
-app.use(cors({ origin: ['https://vomzersocialsnodejsintegration-production.up.railway.app', 'http://localhost:8080'] }));
+//app.use(cors({ origin: ['https://vomzersocialsnodejsintegration-production.up.railway.app', 'http://localhost:8080'] }));
 //app.use(cors({ origin: ['http://127.0.0.1:8080', 'http://localhost:8080'] }));
-app.use(express.json()); // If not already present, to parse JSON bodies
-app.use(morgan('dev'));
+//app.use(express.json()); // If not already present, to parse JSON bodies
 
-app.use(cors({
-    origin: 'https://vomzersocialsnodejsintegration-production.up.railway.app',
-    credentials: true
-}));
+// app.use(cors({
+//     origin: 'https://vomzersocialsnodejsintegration-production.up.railway.app',
+//     credentials: true
+// }));
 console.log('Starting Vomzer Socials Node.js Integration server...');
 
 
@@ -98,6 +117,7 @@ app.post('/api/generate-wallet', async (req, res) => {
     }
 });
 
+
 app.post('/api/login', async (req, res) => {
     const { username, jwt } = req.body;
 
@@ -128,6 +148,93 @@ app.post('/api/login', async (req, res) => {
     } catch (error) {
         console.error('Login error:', error.message);
         return res.status(401).json({ error: 'JWT verification failed' });
+    }
+});
+
+
+// Temporary in-memory storage for users (replace with a database in production)
+// let users = [];
+
+// Placeholder for deriveZkLoginAddress (ensure this is defined or imported)
+// Example: import { deriveZkLoginAddress } from './yourModule.js';
+// For this example, we'll assume it's a function that takes sub and iss as arguments
+// function deriveZkLoginAddress(sub, iss) {
+//     // Mock implementation; replace with your actual logic
+//     return `0x${crypto.createHash('sha256').update(sub + iss).digest('hex').slice(0, 40)}`;
+// }
+
+// Define the /api/register endpoint
+app.post('/api/register', async (req, res) => {
+    const { username, password, token } = req.body;
+
+    // Optional: Verify JWT if provided (e.g., for authenticated registration updates)
+    if (token) {
+        try {
+            const decoded = await new Promise((resolve, reject) => {
+                jwt.verify(token, process.env.JWT_SECRET_KEY, { algorithms: ['HS256'] }, (err, decoded) => {
+                    if (err) reject(new Error('Invalid JWT'));
+                    resolve(decoded);
+                });
+            });
+            // If token is valid, decoded.sub or decoded.iss could be used for additional logic
+            // For now, we proceed with registration regardless of token content
+        } catch (error) {
+            return res.status(401).json({ success: false, error: 'Invalid or expired token' });
+        }
+    }
+
+    // Validate required fields
+    if (!username || !password) {
+        return res.status(400).json({ success: false, error: 'Missing username or password' });
+    }
+
+    try {
+        // Check if username already exists
+        if (users.find(user => user.username === username)) {
+            return res.status(400).json({ success: false, error: 'Username already exists' });
+        }
+
+        // Hash the password
+        const saltRounds = 10;
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+        // Generate a unique identifier (sub) and issuer (iss)
+        const sub = crypto.randomBytes(16).toString('hex'); // Random unique ID
+        const iss = 'vomzer-register'; // Static issuer for registration
+
+        // Derive Sui address (using the placeholder function)
+        const suiAddress = deriveZkLoginAddress(sub, iss);
+
+        // Create JWT payload
+        const payload = {
+            sub, // Unique user ID
+            iss, // Issuer
+            username,
+            iat: Math.floor(Date.now() / 1000), // Issued at timestamp
+            exp: Math.floor(Date.now() / 1000) + 60 * 60 // Expires in 1 hour
+        };
+
+        // Sign JWT with the shared secret key
+        const jwtToken = jwt.sign(payload, process.env.JWT_SECRET_KEY, { algorithm: 'HS256' });
+
+        // Store user data
+        const user = { username, hashedPassword, suiAddress, sub, iss };
+        users.push(user); // Replace with database storage in production
+
+        // Respond with user details and JWT
+        res.status(201).json({
+            success: true,
+            username,
+            suiAddress,
+            token: jwtToken,
+            message: `User ${username} registered successfully with address ${suiAddress}`
+        });
+    } catch (error) {
+        console.error('Registration error:', {
+            message: error.message,
+            stack: error.stack
+        });
+        return res.status(500).json({ success: false, error: 'Registration failed' });
     }
 });
 
