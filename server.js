@@ -163,7 +163,6 @@ app.post('/api/login', async (req, res) => {
 //     return `0x${crypto.createHash('sha256').update(sub + iss).digest('hex').slice(0, 40)}`;
 // }
 
-// Define the /api/register endpoint
 app.post('/api/register', async (req, res) => {
     const { username, password, token } = req.body;
 
@@ -202,8 +201,17 @@ app.post('/api/register', async (req, res) => {
         const sub = crypto.randomBytes(16).toString('hex'); // Random unique ID
         const iss = 'vomzer-register'; // Static issuer for registration
 
-        // Derive Sui address (using the placeholder function)
+        // Derive Sui address
         const suiAddress = deriveZkLoginAddress(sub, iss);
+
+        // Register the Sui address on the blockchain
+        const result = await createSuiAddressOnChain(suiAddress);
+        if (!result.success) {
+            return res.status(500).json({
+                success: false,
+                error: result.error || 'Failed to create wallet on-chain'
+            });
+        }
 
         // Create JWT payload
         const payload = {
@@ -217,17 +225,27 @@ app.post('/api/register', async (req, res) => {
         // Sign JWT with the shared secret key
         const jwtToken = jwt.sign(payload, process.env.JWT_SECRET_KEY, { algorithm: 'HS256' });
 
-        // Store user data
-        const user = { username, hashedPassword, suiAddress, sub, iss };
+        // Store user data with walletObjectId
+        const user = {
+            username,
+            hashedPassword,
+            suiAddress,
+            walletObjectId: result.walletObjectId,
+            sub,
+            iss
+        };
         users.push(user); // Replace with database storage in production
 
-        // Respond with user details and JWT
+        // Respond with user details, blockchain info, and JWT
         res.status(201).json({
             success: true,
             username,
             suiAddress,
+            walletObjectId: result.walletObjectId,
+            transactionDigest: result.transactionDigest,
+            senderAddress: result.senderAddress,
             token: jwtToken,
-            message: `User ${username} registered successfully with address ${suiAddress}`
+            message: `User ${username} registered successfully with address ${suiAddress} and wallet object ${result.walletObjectId}`
         });
     } catch (error) {
         console.error('Registration error:', {
