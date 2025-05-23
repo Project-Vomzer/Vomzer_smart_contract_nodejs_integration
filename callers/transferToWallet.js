@@ -5,7 +5,7 @@ import { client } from '../suiClient.js';
 const PACKAGE_ID = process.env.PACKAGE_ID;
 const MODULE_NAME = process.env.MODULE_NAME;
 const PRIVATE_KEY = process.env.PRIVATE_KEY;
-const FIXED_GAS_BUDGET = 100_000_000; // 0.1 SUI in MIST
+const FIXED_GAS_BUDGET = 100_000_000;
 
 
 function getKeypairFromPrivateKey(hexKey) {
@@ -58,7 +58,7 @@ async function checkBalance(walletAddress) {
             owner: walletAddress,
             coinType: '0x2::sui::SUI',
         });
-        return parseInt(balance.totalBalance); // Balance in MIST
+        return parseInt(balance.totalBalance);
     } catch (error) {
         console.error(`Failed to check balance for ${walletAddress}:`, error);
         throw error;
@@ -124,7 +124,6 @@ export async function transferToWallet({
            amount = 0.007 // Amount in SUI
        }) {
     try {
-        // Validate inputs
         if (!senderPrivateKey) {
             throw new Error('Sender private key is required');
         }
@@ -141,7 +140,6 @@ export async function transferToWallet({
             throw new Error('Invalid transfer amount');
         }
 
-        // Convert amount to MIST if provided in SUI
         let amountInMist = amount;
         if (!Number.isInteger(amount)) {
             console.log(`Converting amount ${amount} SUI to MIST`);
@@ -152,34 +150,27 @@ export async function transferToWallet({
         }
         console.log(`Using amount: ${amountInMist} MIST`);
 
-        // Validate amount is an integer
         if (!Number.isInteger(amountInMist)) {
             throw new Error(`Amount must be an integer in MIST, got ${amountInMist}`);
         }
 
-        // Derive sender's keypair and address
         const senderKeypair = getKeypairFromPrivateKey(senderPrivateKey);
         const derivedSenderAddress = senderKeypair.getPublicKey().toSuiAddress();
 
-        // Hardcoded sender address for testing
         const senderAddress = "0x52f03ac4ac477f9ec51f0e51b9a6d720a311e3a8c0c11cd8c2eeb9eb44d475e5";
 
-        // Validate hardcoded address matches derived address
         if (senderAddress !== derivedSenderAddress) {
             throw new Error('Hardcoded sender address does not match private key');
         }
 
-        // Verify wallet object IDs
         await verifyWalletObject(sourceWalletId, senderAddress);
         await verifyWalletObject(destWalletId, recipientAddress);
 
-        // Check source wallet's balance
         const sourceBalance = await checkWalletBalance(sourceWalletId);
         if (sourceBalance < amountInMist) {
             throw new Error(`Insufficient wallet balance: ${sourceBalance} MIST available, ${amountInMist} MIST required`);
         }
 
-        // Check sender's address balance for gas
         const addressBalance = await checkBalance(senderAddress);
         console.log(`Sender address balance: ${addressBalance} MIST`);
         const gasCoins = await client.getCoins({
@@ -194,7 +185,6 @@ export async function transferToWallet({
 
 
 
-        // Build transaction
         const txb = new TransactionBlock();
         txb.setSender(senderAddress);
         txb.moveCall({
@@ -206,15 +196,12 @@ export async function transferToWallet({
             ],
         });
 
-        // Set gas coin explicitly
         txb.setGasPayment([{ objectId: gasCoin.coinObjectId, version: gasCoin.version, digest: gasCoin.digest }]);
         txb.setGasBudget(FIXED_GAS_BUDGET);
 
-        // Execute transaction
         console.log(`Transferring ${amountInMist} MIST from wallet ${sourceWalletId} to wallet ${destWalletId}...`);
         const result = await executeTransaction(txb, senderKeypair);
 
-        // Verify balances after transfer
         const sourceBalanceAfter = await checkWalletBalance(sourceWalletId);
         const destBalanceAfter = await checkWalletBalance(destWalletId);
         console.log(`Post-transfer: Source wallet ${sourceWalletId} balance: ${sourceBalanceAfter} MIST`);

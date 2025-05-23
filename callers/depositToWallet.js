@@ -4,7 +4,7 @@ import { client } from '../suiClient.js';
 
 const PACKAGE_ID = process.env.PACKAGE_ID;
 const MODULE_NAME = process.env.MODULE_NAME;
-const FIXED_GAS_BUDGET = 100_000_000; // 0.1 SUI in MIST
+const FIXED_GAS_BUDGET = 100_000_000;
 
 
 function getKeypairFromPrivateKey(hexKey) {
@@ -66,10 +66,9 @@ async function executeTransaction(txb, keypair) {
 export async function depositToWallet({
           senderPrivateKey,
           walletId = "0x03355332cb05eb346e8b71de30c374726bb703f00c15582b598e11a01693009e",
-          amountInMist = 30_000_000 // Default to 0.0001 SUI
+          amountInMist = 30_000_000
       }) {
     try {
-        // Validate inputs
         if (!senderPrivateKey) {
             throw new Error('Sender private key is required');
         }
@@ -80,25 +79,20 @@ export async function depositToWallet({
             throw new Error('Invalid deposit amount');
         }
 
-        // Validate amount is an integer
         if (!Number.isInteger(amountInMist)) {
             throw new Error(`Amount must be an integer in MIST, got ${amountInMist}`);
         }
 
-        // Derive sender's keypair and address
         const senderKeypair = getKeypairFromPrivateKey(senderPrivateKey);
         const senderAddress = senderKeypair.getPublicKey().toSuiAddress();
 
-        // Check sender's address balance
         const addressBalance = await checkBalance(senderAddress);
         console.log(`Sender address balance: ${addressBalance} MIST`);
 
-        // Check if balance covers deposit amount + gas
         if (addressBalance < amountInMist + FIXED_GAS_BUDGET) {
             throw new Error(`Insufficient address balance for deposit (${amountInMist} MIST) and gas (${FIXED_GAS_BUDGET} MIST): ${addressBalance} MIST available`);
         }
 
-        // Build transaction
         const txb = new TransactionBlock();
         txb.setSender(senderAddress);
         const [coin] = txb.splitCoins(txb.gas, [txb.pure(amountInMist)]);
@@ -110,11 +104,9 @@ export async function depositToWallet({
             ],
         });
 
-        // Set fixed gas budget
         console.log(`Using fixed gas budget: ${FIXED_GAS_BUDGET} MIST`);
         txb.setGasBudget(FIXED_GAS_BUDGET);
 
-        // Execute transaction
         console.log(`Depositing ${amountInMist} MIST to wallet ${walletId}...`);
         const result = await executeTransaction(txb, senderKeypair);
         return {

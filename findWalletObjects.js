@@ -24,7 +24,6 @@ async function findWalletObjectId(address) {
     }
 }
 
-// Example usage
 async function main() {
     const senderAddress = '0x52f03ac4ac477f9ec51f0e51b9a6d720a311e3a8c0c11cd8c2eeb9eb44d475e5';
     const recipientAddress = '0xb7cd2f1248678984499a78ee51e14a01d1a9efe4d23f11469c3c29a11e4fdf6f';
