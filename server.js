@@ -21,10 +21,9 @@ import crypto from 'crypto';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
-const users = []; // Define the array here
+const users = [];
 
-// Middleware setup
-app.use(morgan('dev')); // Logging first
+app.use(morgan('dev'));
 app.use(cors({
     origin: [
         'http://localhost:3000',                // Add this line for your frontend
@@ -50,14 +49,6 @@ if (!CLIENT_ID) {
     throw new Error('GOOGLE_CLIENT_ID must be set in .env');
 }
 
-//app.use(cors({ origin: ['https://vomzersocialsnodejsintegration-production.up.railway.app', 'http://localhost:8080'] }));
-//app.use(cors({ origin: ['http://127.0.0.1:8080', 'http://localhost:8080'] }));
-//app.use(express.json()); // If not already present, to parse JSON bodies
-
-// app.use(cors({
-//     origin: 'https://vomzersocialsnodejsintegration-production.up.railway.app',
-//     credentials: true
-// }));
 console.log('Starting Vomzer Socials Node.js Integration server...');
 
 
@@ -152,21 +143,9 @@ app.post('/api/login', async (req, res) => {
 });
 
 
-// Temporary in-memory storage for users (replace with a database in production)
-// let users = [];
-
-// Placeholder for deriveZkLoginAddress (ensure this is defined or imported)
-// Example: import { deriveZkLoginAddress } from './yourModule.js';
-// For this example, we'll assume it's a function that takes sub and iss as arguments
-// function deriveZkLoginAddress(sub, iss) {
-//     // Mock implementation; replace with your actual logic
-//     return `0x${crypto.createHash('sha256').update(sub + iss).digest('hex').slice(0, 40)}`;
-// }
-
 app.post('/api/register', async (req, res) => {
     const { username, password, token } = req.body;
 
-    // Optional: Verify JWT if provided (e.g., for authenticated registration updates)
     if (token) {
         try {
             const decoded = await new Promise((resolve, reject) => {
@@ -175,36 +154,28 @@ app.post('/api/register', async (req, res) => {
                     resolve(decoded);
                 });
             });
-            // If token is valid, decoded.sub or decoded.iss could be used for additional logic
-            // For now, we proceed with registration regardless of token content
         } catch (error) {
             return res.status(401).json({ success: false, error: 'Invalid or expired token' });
         }
     }
 
-    // Validate required fields
     if (!username || !password) {
         return res.status(400).json({ success: false, error: 'Missing username or password' });
     }
 
     try {
-        // Check if username already exists
         if (users.find(user => user.username === username)) {
             return res.status(400).json({ success: false, error: 'Username already exists' });
         }
 
-        // Hash the password
         const saltRounds = 10;
         const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-        // Generate a unique identifier (sub) and issuer (iss)
         const sub = crypto.randomBytes(16).toString('hex'); // Random unique ID
         const iss = 'vomzer-register'; // Static issuer for registration
 
-        // Derive Sui address
         const suiAddress = deriveZkLoginAddress(sub, iss);
 
-        // Register the Sui address on the blockchain
         const result = await createSuiAddressOnChain(suiAddress);
         if (!result.success) {
             return res.status(500).json({
@@ -213,7 +184,6 @@ app.post('/api/register', async (req, res) => {
             });
         }
 
-        // Create JWT payload
         const payload = {
             sub, // Unique user ID
             iss, // Issuer
@@ -222,10 +192,8 @@ app.post('/api/register', async (req, res) => {
             exp: Math.floor(Date.now() / 1000) + 60 * 60 // Expires in 1 hour
         };
 
-        // Sign JWT with the shared secret key
         const jwtToken = jwt.sign(payload, process.env.JWT_SECRET_KEY, { algorithm: 'HS256' });
 
-        // Store user data with walletObjectId
         const user = {
             username,
             hashedPassword,
@@ -234,9 +202,8 @@ app.post('/api/register', async (req, res) => {
             sub,
             iss
         };
-        users.push(user); // Replace with database storage in production
+        users.push(user);
 
-        // Respond with user details, blockchain info, and JWT
         res.status(201).json({
             success: true,
             username,
@@ -257,7 +224,6 @@ app.post('/api/register', async (req, res) => {
 });
 
 
-// Existing endpoint: create off-chain address
 app.post('/api/create-sui-address-off-chain', (req, res) => {
     try {
         console.log('Received POST /api/create-sui-address_off-chain', {
@@ -292,7 +258,6 @@ app.post('/api/create-sui-address-off-chain', (req, res) => {
 });
 
 
-// Existing endpoint: create on-chain address (still available but not used with zkLogin)
 app.post('/api/create-sui-address-on-chain', async (req, res) => {
     try {
         console.log('Creating Sui address on-chain...');
@@ -317,7 +282,6 @@ app.post('/api/create-sui-address-on-chain', async (req, res) => {
 });
 
 
-// Existing endpoint: fund Sui address
 app.post('/api/fund-sui-address', async (req, res) => {
     try {
         const { senderPrivateKey, recipientWalletId, amount } = req.body;
@@ -365,7 +329,6 @@ app.post('/api/fund-sui-address', async (req, res) => {
 });
 
 
-// Existing endpoint: create wallet
 app.post('/api/create-wallet', async (req, res) => {
     try {
         const { address, privateKey } = req.body || {};
@@ -399,7 +362,6 @@ app.post('/api/create-wallet', async (req, res) => {
 });
 
 
-// Existing endpoint: deposit to wallet
 app.post('/api/deposit-to-wallet', async (req, res) => {
     try {
         const depositParams = {
@@ -432,7 +394,6 @@ app.post('/api/deposit-to-wallet', async (req, res) => {
 });
 
 
-// Existing endpoint: transfer to wallet
 app.post('/api/transfer-to-wallet', async (req, res) => {
     try {
         const transferParams = {
@@ -467,7 +428,6 @@ app.post('/api/transfer-to-wallet', async (req, res) => {
 });
 
 
-// Existing endpoint: transfer to address
 app.post('/api/transfer-to-address', async (req, res) => {
     try {
         const recipientAddress = "0x28b7cefa1e46d3e6d695a0f465b72033279e076bb7240c7715ec5950e9004e08";
@@ -516,7 +476,6 @@ app.post('/api/transfer-to-address', async (req, res) => {
 });
 
 
-// Existing endpoint: expend reward
 app.post('/api/expend-reward', async (req, res) => {
     try {
         const recipientWalletId = "0xb7cd2f1248678984499a78ee51e14a01d1a9efe4d23f11469c3c29a11e4fdf6f";

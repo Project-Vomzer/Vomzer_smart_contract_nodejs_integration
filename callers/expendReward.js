@@ -57,12 +57,10 @@ export async function expendReward({
 
         console.log(`Funding ${amount} MIST to ${recipientWalletId} from ${derivedSenderAddress}`);
 
-        // Create transaction
         const txb = new TransactionBlock();
         const [coin] = txb.splitCoins(txb.gas, [amount]);
         txb.transferObjects([coin], recipientWalletId);
 
-        // Sign and execute transaction
         const result = await client.signAndExecuteTransactionBlock({
             transactionBlock: txb,
             signer: senderKeypair,

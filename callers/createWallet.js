@@ -6,7 +6,6 @@ const PACKAGE_ID = process.env.PACKAGE_ID;
 const MODULE_NAME = process.env.MODULE_NAME;
 const PRIVATE_KEY = process.env.PRIVATE_KEY;
 
-// Hardcoded sender address for testing
 const senderAddress = '0x52f03ac4ac477f9ec51f0e51b9a6d720a311e3a8c0c11cd8c2eeb9eb44d475e5';
 
 function getKeypairFromPrivateKey(hexKey) {
@@ -40,7 +39,6 @@ export async function createWallet({
         const keypair = getKeypairFromPrivateKey(privateKey);
         const derivedAddress = keypair.getPublicKey().toSuiAddress();
 
-        // Validate that the provided address matches the private key's derived address
         if (address !== derivedAddress) {
             throw new Error(`Provided address ${address} does not match the address derived from the private key: ${derivedAddress}`);
         }
@@ -51,21 +49,18 @@ export async function createWallet({
 
 
 
-        // Create a transaction to call the create_wallet function
         const txb = new TransactionBlock();
         txb.moveCall({
             target: `${PACKAGE_ID}::${MODULE_NAME}::create_wallet`,
             arguments: [],
         });
 
-        // Sign and execute the transaction
         const result = await client.signAndExecuteTransactionBlock({
             transactionBlock: txb,
             signer: keypair,
             options: { showEffects: true, showEvents: true },
         });
 
-        // Extract the created Wallet object ID
         const createdObject = result.effects?.created?.[0];
         const walletObjectId = createdObject?.reference?.objectId;
 

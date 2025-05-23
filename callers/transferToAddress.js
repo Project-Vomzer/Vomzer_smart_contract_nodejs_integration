@@ -89,7 +89,6 @@ export async function transferToAddress({
 
         const txb = new TransactionBlock();
 
-        // Call the move function with txb.gas directly
         txb.moveCall({
             target: `${PACKAGE_ID}::${MODULE_NAME}::transfer_tothe_address`,
             arguments: [
@@ -99,7 +98,6 @@ export async function transferToAddress({
             ],
         });
 
-        // Set the gas budget
         txb.setGasBudget(FIXED_GAS_BUDGET);
 
         console.log('Transaction block prepared, executing...');

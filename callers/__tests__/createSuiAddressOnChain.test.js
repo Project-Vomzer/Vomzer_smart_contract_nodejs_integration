@@ -1,7 +1,6 @@
 import { jest } from '@jest/globals';
 
 
-// Mock suiClient.js before importing
 jest.unstable_mockModule('../../suiClient.js', () => ({
     client: {
         getBalance: jest.fn(),
@@ -9,14 +8,11 @@ jest.unstable_mockModule('../../suiClient.js', () => ({
     },
 }));
 
-// Import after mocking
 const { createSuiAddressOnChain } = await import('../createSuiAddressOnChain.js');
 const { client } = await import('../../suiClient.js');
 const { Ed25519Keypair } = await import('@mysten/sui.js/keypairs/ed25519');
-// import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
 
 describe('createSuiAddressOnChain', () => {
-    // Mock environment variables
     const originalEnv = process.env;
     const mockPackageId = '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
     const mockModuleName = 'wallet_module';
@@ -25,9 +21,7 @@ describe('createSuiAddressOnChain', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        // Rely on .env.test for defaults, only reset process.env
         process.env = { ...originalEnv };
-        // Mock console methods
         jest.spyOn(console, 'log').mockImplementation(() => {});
         jest.spyOn(console, 'error').mockImplementation(() => {});
     });
@@ -39,7 +33,6 @@ describe('createSuiAddressOnChain', () => {
     });
 
     test('should create a wallet on-chain successfully', async () => {
-        // Mock client responses
         client.getBalance.mockImplementation(() => Promise.resolve({ totalBalance: '200000000' })); // 0.2 SUI in MIST
         client.signAndExecuteTransactionBlock.mockImplementation(() =>
             Promise.resolve({
@@ -62,7 +55,6 @@ describe('createSuiAddressOnChain', () => {
 
         const result = await createSuiAddressOnChain();
 
-        // Validate result
         expect(result).toBeDefined();
         expect(result.success).toBe(true);
         expect(result).toHaveProperty('walletObjectId', 'mockWalletObjectId');
@@ -71,22 +63,18 @@ describe('createSuiAddressOnChain', () => {
         expect(result).toHaveProperty('transactionDigest', 'mockTransactionDigest');
         expect(result).toHaveProperty('senderAddress');
 
-        // Validate walletAddress
         expect(typeof result.walletAddress).toBe('string');
         expect(result.walletAddress).toMatch(/^0x[0-9a-fA-F]{64}$/);
         expect(result.walletAddress.length).toBe(66);
 
-        // Validate privateKey (hex)
         expect(typeof result.privateKey).toBe('string');
         expect(result.privateKey).toMatch(/^[0-9a-fA-F]+$/);
         expect(result.privateKey.length).toBe(64);
 
-        // Verify address derivation from privateKey
         const keypair = Ed25519Keypair.fromSecretKey(Buffer.from(result.privateKey, 'hex'));
         const derivedAddress = keypair.getPublicKey().toSuiAddress();
         expect(derivedAddress).toBe(result.walletAddress);
 
-        // Verify client calls
         expect(client.getBalance).toHaveBeenCalledWith({ owner: expect.any(String) });
         expect(client.signAndExecuteTransactionBlock).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -96,7 +84,6 @@ describe('createSuiAddressOnChain', () => {
             })
         );
 
-        // Verify console logs
         expect(console.log).toHaveBeenCalledWith(`Sender address (for gas): ${result.senderAddress}`);
         expect(console.log).toHaveBeenCalledWith(`New wallet address: ${result.walletAddress}`);
         expect(console.log).toHaveBeenCalledWith(`Sender total balance: ${200000000} MIST`);
@@ -119,7 +106,7 @@ describe('createSuiAddressOnChain', () => {
     });
 
     test('should fail if balance is insufficient', async () => {
-        process.env.PRIVATE_KEY = mockPrivateKey; // Override .env.test
+        process.env.PRIVATE_KEY = mockPrivateKey;
         client.getBalance.mockImplementation(() => Promise.resolve({ totalBalance: '50000000' })); // 0.05 SUI
 
         const result = await createSuiAddressOnChain();
@@ -133,7 +120,7 @@ describe('createSuiAddressOnChain', () => {
     });
 
     test('should fail if private key is invalid length', async () => {
-        process.env.PRIVATE_KEY = 'a1b2c3d4'; // Override .env.test
+        process.env.PRIVATE_KEY = 'a1b2c3d4';
 
         const result = await createSuiAddressOnChain();
 

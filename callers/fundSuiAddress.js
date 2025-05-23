@@ -11,7 +11,6 @@ export async function fundSuiAddress({
          amount,
      }) {
     try {
-        // Validate inputs
         if (!senderPrivateKey) {
             throw new Error('Sender private key is required');
         }
@@ -22,20 +21,17 @@ export async function fundSuiAddress({
             throw new Error('Invalid amount: must be a positive number');
         }
 
-        // Convert amount from SUI to MIST
         const amountInMist = Math.floor(amount * 1_000_000_000);
         if (amountInMist < 1_000_000) {
             throw new Error(`Amount too small: ${amount} SUI is ${amountInMist} MIST, minimum 0.001 SUI`);
         }
 
-        // Derive sender keypair
         const senderKeypair = getKeypairFromPrivateKey(senderPrivateKey);
         const senderAddress = senderKeypair.getPublicKey().toSuiAddress();
 
-        // Check sender balance
         const balance = await client.getBalance({ owner: senderAddress });
         const totalBalance = parseInt(balance.totalBalance);
-        const gasBudget = 100_000_000; // 0.1 SUI in MIST
+        const gasBudget = 100_000_000;
         if (totalBalance < amountInMist + gasBudget) {
             throw new Error(`Insufficient balance: ${totalBalance} MIST, needed ${amountInMist + gasBudget} MIST`);
         }
@@ -43,14 +39,11 @@ export async function fundSuiAddress({
         console.log(`Funding ${amount} SUI (${amountInMist} MIST) to ${recipientWalletId} from ${senderAddress}`);
 
 
-
-        // Create transaction
         const txb = new TransactionBlock();
         const [coin] = txb.splitCoins(txb.gas, [amountInMist]);
         txb.transferObjects([coin], recipientWalletId);
         txb.setGasBudget(gasBudget);
 
-        // Sign and execute transaction
         const result = await client.signAndExecuteTransactionBlock({
             transactionBlock: txb,
             signer: senderKeypair,
@@ -58,7 +51,6 @@ export async function fundSuiAddress({
             options: { showEffects: true },
         });
 
-        // Check transaction status
         if (result.effects?.status?.status !== 'success') {
             throw new Error(`Transaction failed: ${result.effects?.status?.error || 'Unknown error'}`);
         }
